@@ -219,8 +219,10 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev_secret_CHANGE_IN_PROD}
       MINIO_ENDPOINT: minio
       MINIO_PORT: "9000"
+      MINIO_USE_SSL: "false"
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+      MINIO_BUCKET_PHOTOS: ${MINIO_BUCKET_PHOTOS:-fight-photos}
     depends_on:
       postgres-vote:
         condition: service_healthy
@@ -228,6 +230,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      minio:
+        condition: service_started
 
   economy-service:
     build:

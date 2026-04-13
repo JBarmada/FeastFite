@@ -9,7 +9,7 @@ COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY services/profile-service ./services/profile-service
 
-RUN npm ci --workspace=packages/shared --workspace=services/profile-service
+RUN npm ci
 
 RUN npm run build -w packages/shared
 RUN npm run build -w services/profile-service

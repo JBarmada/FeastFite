@@ -9,7 +9,7 @@ COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY services/auth-service ./services/auth-service
 
-RUN npm ci --workspace=packages/shared --workspace=services/auth-service
+RUN npm ci
 
 RUN npm run build -w packages/shared
 RUN npm run build -w services/auth-service

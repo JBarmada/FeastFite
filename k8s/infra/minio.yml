@@ -34,6 +34,18 @@ spec:
               name: api
             - containerPort: 9001
               name: console
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 20
+            periodSeconds: 20
           volumeMounts:
             - name: data
               mountPath: /data
@@ -61,4 +73,3 @@ spec:
     - name: console
       port: 9001
       targetPort: 9001
-  clusterIP: None

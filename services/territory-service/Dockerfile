@@ -9,7 +9,7 @@ COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY services/territory-service ./services/territory-service
 
-RUN npm ci --workspace=packages/shared --workspace=services/territory-service
+RUN npm ci
 
 RUN npm run build -w packages/shared
 RUN npm run build -w services/territory-service

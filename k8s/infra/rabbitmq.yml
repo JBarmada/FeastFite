@@ -33,6 +33,16 @@ spec:
               name: amqp
             - containerPort: 15672
               name: management
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          livenessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
           volumeMounts:
             - name: data
               mountPath: /var/lib/rabbitmq
@@ -60,4 +70,3 @@ spec:
     - name: management
       port: 15672
       targetPort: 15672
-  clusterIP: None

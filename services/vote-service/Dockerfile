@@ -9,7 +9,7 @@ COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY services/vote-service ./services/vote-service
 
-RUN npm ci --workspace=packages/shared --workspace=services/vote-service
+RUN npm ci
 
 RUN npm run build -w packages/shared
 RUN npm run build -w services/vote-service
