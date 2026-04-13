@@ -3,10 +3,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { PrivateRoute } from './components/PrivateRoute';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
-
-function Dashboard() {
-  return <h1>Dashboard — TODO</h1>;
-}
+import { MapPage } from './pages/MapPage';
 
 export function App() {
   return (
@@ -15,8 +12,10 @@ export function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          {/* TODO: restore PrivateRoute wrapper once auth is wired end-to-end */}
+          <Route path="/" element={<MapPage />} />
           <Route element={<PrivateRoute />}>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/dashboard" element={<MapPage />} />
           </Route>
         </Routes>
       </AuthProvider>

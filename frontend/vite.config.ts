@@ -12,6 +12,12 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // TODO: switch target back to Kong (http://localhost:8000) when full stack is running
+      '/api/territory': {
+        target: 'http://localhost:3002',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/territory/, '/api/territory'),
+      },
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
