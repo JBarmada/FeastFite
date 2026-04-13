@@ -44,6 +44,7 @@ export function LoginPage() {
         {isLoading ? 'Logging in...' : 'Login'}
       </button>
       <Link to="/register">Create an account</Link>
+      <Link to="/forgot-password">Forgot password?</Link>
     </form>
   );
 }

@@ -71,6 +71,15 @@ export interface VoteWinnerDeclaredEvent {
   timestamp: string;
 }
 
+export interface VoteParticipantEvent {
+  eventType: 'vote.participant';
+  sessionId: string;
+  territoryId: string;
+  userId: string;
+  candidateId: string;
+  timestamp: string;
+}
+
 export interface TerritoryClaimedEvent {
   eventType: 'territory.claimed';
   territoryId: string;
@@ -97,6 +106,7 @@ export interface UserRegisteredEvent {
 
 export type FeastFiteEvent =
   | VoteWinnerDeclaredEvent
+  | VoteParticipantEvent
   | TerritoryClaimedEvent
   | ItemPurchasedEvent
   | UserRegisteredEvent;

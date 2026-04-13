@@ -9,8 +9,8 @@ COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY services/territory-service ./services/territory-service
 
-# Full root install so root devDependencies (typescript, etc.) land in node_modules/.bin
-RUN npm ci --workspace=packages/shared --workspace=services/territory-service --include-workspace-root
+# Full root install so root devDependencies (typescript) land in node_modules/.bin
+RUN npm ci
 
 RUN npm run build -w packages/shared
 RUN npm run build -w services/territory-service
