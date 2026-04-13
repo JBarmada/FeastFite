@@ -1,17 +1,26 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import type { User } from '@feastfite/shared';
 import { authApi } from '../api/authApi';
 
 interface AuthState {
   user: User | null;
+  /** Access token stored in memory only — never persisted to localStorage. */
   token: string | null;
   isAuthenticated: boolean;
+  /** True while the silent-refresh attempt on mount is in flight. */
   isLoading: boolean;
 }
 
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   register: (email: string, username: string, password: string) => Promise<void>;
 }
 
@@ -22,8 +31,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user: null,
     token: null,
     isAuthenticated: false,
-    isLoading: false,
+    isLoading: true, // start true: attempt silent refresh before rendering protected routes
   });
+
+  // On mount: try to get a new access token using the httpOnly refresh cookie.
+  // If the cookie is absent or expired, the call fails and we stay logged out.
+  useEffect(() => {
+    authApi
+      .refresh()
+      .then(({ user, token }) => {
+        setState({ user, token, isAuthenticated: true, isLoading: false });
+      })
+      .catch(() => {
+        setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
+      });
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     setState((s) => ({ ...s, isLoading: true }));
@@ -36,8 +58,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const logout = useCallback(() => {
-    setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } finally {
+      setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
+    }
   }, []);
 
   const register = useCallback(async (email: string, username: string, password: string) => {
