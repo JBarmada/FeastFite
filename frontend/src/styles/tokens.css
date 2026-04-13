@@ -1,0 +1,159 @@
+/* ================================================================
+   FeastFite Design Tokens — Candy theme
+   Bright, sweet, playful. Light background + punchy candy colors.
+   ================================================================ */
+
+:root {
+  /* ── Brand ──────────────────────────────────────────────────── */
+  --color-primary:        #A020C8;   /* candy purple  — main brand, CTAs          */
+  --color-primary-hover:  #8A18AC;
+  --color-primary-light:  #EDD6F7;
+  --color-primary-dim:    rgba(160, 32, 200, 0.12);
+
+  --color-secondary:      #FF4FA3;   /* bubblegum pink — secondary actions, love  */
+  --color-secondary-hover:#E03D8E;
+  --color-secondary-light:#FFD6EC;
+  --color-secondary-dim:  rgba(255, 79, 163, 0.12);
+
+  --color-accent:         #00C8E0;   /* candy blue    — highlights, info, links   */
+  --color-accent-hover:   #00AABF;
+  --color-accent-light:   #CCF3F9;
+  --color-accent-dim:     rgba(0, 200, 224, 0.12);
+
+  /* ── Backgrounds ─────────────────────────────────────────────── */
+  --color-bg:             #FDF5FF;   /* soft lavender-white — main page bg        */
+  --color-surface:        #FFFFFF;   /* cards, panels                             */
+  --color-surface-raised: #F7EAFF;   /* modals, dropdowns, tooltips               */
+  --color-border:         #E2C8F0;   /* dividers, input borders                   */
+  --color-border-focus:   #A020C8;   /* focused input ring                        */
+
+  /* ── Text ────────────────────────────────────────────────────── */
+  --color-text-primary:   #2D1040;   /* deep plum — headings, body                */
+  --color-text-secondary: #7A5490;   /* mid purple — subtitles, labels            */
+  --color-text-muted:     #B89CC8;   /* light purple — placeholders, disabled     */
+  --color-text-inverse:   #FFFFFF;   /* text on colored buttons                   */
+
+  /* ── Semantic ────────────────────────────────────────────────── */
+  --color-success:        #3DC45A;
+  --color-success-light:  #D4F5DC;
+  --color-success-dim:    rgba(61, 196, 90, 0.12);
+
+  --color-warning:        #FFA800;
+  --color-warning-light:  #FFF0CC;
+  --color-warning-dim:    rgba(255, 168, 0, 0.12);
+
+  --color-error:          #FF3D5A;
+  --color-error-light:    #FFD6DC;
+  --color-error-dim:      rgba(255, 61, 90, 0.12);
+
+  --color-info:           #00C8E0;
+  --color-info-light:     #CCF3F9;
+  --color-info-dim:       rgba(0, 200, 224, 0.12);
+
+  /* ── Territory states (map polygon fills) ────────────────────── */
+  --color-territory-unclaimed:        rgba(180, 150, 200, 0.30);
+  --color-territory-unclaimed-border: #C4A0D8;
+
+  --color-territory-voting:           rgba(255, 168,   0, 0.45);  /* golden pulse  */
+  --color-territory-voting-border:    #FFA800;
+
+  --color-territory-locked:           rgba(  0, 200, 224, 0.40);  /* icy blue      */
+  --color-territory-locked-border:    #00C8E0;
+
+  /* ── Player territory colors (8 candy flavors) ───────────────── */
+  --color-player-cherry:      #FF3D5A;
+  --color-player-cherry-fill: rgba(255,  61,  90, 0.40);
+
+  --color-player-grape:       #A020C8;
+  --color-player-grape-fill:  rgba(160,  32, 200, 0.40);
+
+  --color-player-bubblegum:   #FF4FA3;
+  --color-player-bubblegum-fill: rgba(255, 79, 163, 0.40);
+
+  --color-player-blueberry:   #3D6FFF;
+  --color-player-blueberry-fill: rgba(61, 111, 255, 0.40);
+
+  --color-player-orange:      #FF7A00;
+  --color-player-orange-fill: rgba(255, 122,   0, 0.40);
+
+  --color-player-lemon:       #FFD600;
+  --color-player-lemon-fill:  rgba(255, 214,   0, 0.40);
+
+  --color-player-lime:        #3DC45A;
+  --color-player-lime-fill:   rgba( 61, 196,  90, 0.40);
+
+  --color-player-cotton:      #00C8E0;
+  --color-player-cotton-fill: rgba(  0, 200, 224, 0.40);
+
+  /* ── Economy / Shop items ────────────────────────────────────── */
+  --color-points:       #FFA800;   /* gold coins                                 */
+  --color-item-shield:  #00C8E0;   /* icy blue shield                            */
+  --color-item-ram:     #FF3D5A;   /* red battering ram                          */
+  --color-item-boost:   #3DC45A;   /* green double-points boost                  */
+
+  /* ── Typography ──────────────────────────────────────────────── */
+  --font-sans:    'Nunito', 'Rounded Mplus 1c', system-ui, sans-serif;
+  --font-display: 'Fredoka One', 'Nunito', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-lg:   1.125rem;
+  --text-xl:   1.25rem;
+  --text-2xl:  1.5rem;
+  --text-3xl:  1.875rem;
+  --text-4xl:  2.25rem;
+
+  /* ── Spacing ─────────────────────────────────────────────────── */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* ── Radius — extra-rounded = candy-crush feel ───────────────── */
+  --radius-sm:   8px;
+  --radius-md:   14px;
+  --radius-lg:   20px;
+  --radius-xl:   28px;
+  --radius-full: 9999px;
+
+  /* ── Shadows — soft, colorful ────────────────────────────────── */
+  --shadow-sm:  0 2px 6px  rgba(160, 32, 200, 0.10);
+  --shadow-md:  0 4px 16px rgba(160, 32, 200, 0.15);
+  --shadow-lg:  0 8px 30px rgba(160, 32, 200, 0.20);
+  --shadow-glow-primary:   0 0 20px rgba(160,  32, 200, 0.45);
+  --shadow-glow-secondary: 0 0 20px rgba(255,  79, 163, 0.45);
+  --shadow-glow-accent:    0 0 20px rgba(  0, 200, 224, 0.45);
+
+  /* ── Transitions ─────────────────────────────────────────────── */
+  --transition-fast:   100ms ease;
+  --transition-base:   200ms ease;
+  --transition-slow:   350ms ease;
+
+  /* ── Z-index scale ───────────────────────────────────────────── */
+  --z-map:      0;
+  --z-ui:       10;
+  --z-panel:    20;
+  --z-modal:    30;
+  --z-toast:    40;
+  --z-tooltip:  50;
+}
+
+/* ── Global resets ───────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  -webkit-font-smoothing: antialiased;
+}
