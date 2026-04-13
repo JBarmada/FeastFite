@@ -1,0 +1,91 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: auth-service
+    url: http://auth-service:3001
+    routes:
+      - name: auth-routes
+        paths:
+          - /api/auth
+        strip_path: false
+        protocols: [http, https]
+
+  - name: territory-service
+    url: http://territory-service:3002
+    routes:
+      - name: territory-routes
+        paths:
+          - /api/territory
+        strip_path: false
+        protocols: [http, https]
+
+  - name: vote-service
+    url: http://vote-service:3003
+    routes:
+      - name: vote-routes
+        paths:
+          - /api/vote
+        strip_path: false
+        protocols: [http, https]
+      - name: vote-ws-route
+        paths:
+          - /ws/vote
+        strip_path: false
+        protocols: [ws, wss]
+
+  - name: economy-service
+    url: http://economy-service:3004
+    routes:
+      - name: economy-routes
+        paths:
+          - /api/economy
+        strip_path: false
+        protocols: [http, https]
+
+  - name: profile-service
+    url: http://profile-service:3005
+    routes:
+      - name: profile-routes
+        paths:
+          - /api/profile
+        strip_path: false
+        protocols: [http, https]
+
+plugins:
+  # JWT plugin — disabled in initial setup.
+  # Enable and scope to specific routes once auth-service issues JWTs
+  # and consumers with JWT credentials are added to this file.
+  - name: jwt
+    enabled: false
+    config:
+      secret_is_base64: false
+      claims_to_verify:
+        - exp
+
+  - name: rate-limiting
+    config:
+      minute: 120
+      hour: 3000
+      policy: local
+      fault_tolerant: true
+      hide_client_headers: false
+
+  - name: cors
+    config:
+      origins:
+        - "http://localhost:5173"
+        - "https://feastfite.com"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Accept
+        - Authorization
+        - Content-Type
+      credentials: true
+      max_age: 3600

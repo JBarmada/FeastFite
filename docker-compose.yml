@@ -1,0 +1,322 @@
+version: "3.9"
+
+x-postgres-common: &postgres-common
+  image: postgres:16-alpine
+  restart: unless-stopped
+  environment:
+    POSTGRES_USER: ${POSTGRES_USER:-feastfite}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-feastfite}"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 10s
+
+services:
+  # ── Databases ────────────────────────────────────────────────────
+  postgres-auth:
+    <<: *postgres-common
+    container_name: feastfite-postgres-auth
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-feastfite}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_DB: auth_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql/data
+
+  postgres-territory:
+    container_name: feastfite-postgres-territory
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-feastfite}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_DB: territory_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-territory-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-feastfite}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  postgres-vote:
+    <<: *postgres-common
+    container_name: feastfite-postgres-vote
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-feastfite}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_DB: vote_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-vote-data:/var/lib/postgresql/data
+
+  postgres-economy:
+    <<: *postgres-common
+    container_name: feastfite-postgres-economy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-feastfite}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_DB: economy_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres-economy-data:/var/lib/postgresql/data
+
+  postgres-profile:
+    <<: *postgres-common
+    container_name: feastfite-postgres-profile
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-feastfite}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_DB: profile_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres-profile-data:/var/lib/postgresql/data
+
+  # ── Redis ─────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: feastfite-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── RabbitMQ ──────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: feastfite-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ── MinIO ─────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: feastfite-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # ── Application Services ──────────────────────────────────────────
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    container_name: feastfite-auth-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      NODE_ENV: development
+      DB_HOST: postgres-auth
+      DB_PORT: "5432"
+      DB_NAME: auth_db
+      DB_USER: ${POSTGRES_USER:-feastfite}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      RABBITMQ_EXCHANGE: feastfite.events
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_CHANGE_IN_PROD}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  territory-service:
+    build:
+      context: .
+      dockerfile: services/territory-service/Dockerfile
+    container_name: feastfite-territory-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      PORT: "3002"
+      NODE_ENV: development
+      DB_HOST: postgres-territory
+      DB_PORT: "5432"
+      DB_NAME: territory_db
+      DB_USER: ${POSTGRES_USER:-feastfite}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      RABBITMQ_EXCHANGE: feastfite.events
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_CHANGE_IN_PROD}
+    depends_on:
+      postgres-territory:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  vote-service:
+    build:
+      context: .
+      dockerfile: services/vote-service/Dockerfile
+    container_name: feastfite-vote-service
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      PORT: "3003"
+      NODE_ENV: development
+      DB_HOST: postgres-vote
+      DB_PORT: "5432"
+      DB_NAME: vote_db
+      DB_USER: ${POSTGRES_USER:-feastfite}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      RABBITMQ_EXCHANGE: feastfite.events
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_CHANGE_IN_PROD}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+    depends_on:
+      postgres-vote:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  economy-service:
+    build:
+      context: .
+      dockerfile: services/economy-service/Dockerfile
+    container_name: feastfite-economy-service
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    environment:
+      PORT: "3004"
+      NODE_ENV: development
+      DB_HOST: postgres-economy
+      DB_PORT: "5432"
+      DB_NAME: economy_db
+      DB_USER: ${POSTGRES_USER:-feastfite}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      RABBITMQ_EXCHANGE: feastfite.events
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_CHANGE_IN_PROD}
+    depends_on:
+      postgres-economy:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  profile-service:
+    build:
+      context: .
+      dockerfile: services/profile-service/Dockerfile
+    container_name: feastfite-profile-service
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    environment:
+      PORT: "3005"
+      NODE_ENV: development
+      DB_HOST: postgres-profile
+      DB_PORT: "5432"
+      DB_NAME: profile_db
+      DB_USER: ${POSTGRES_USER:-feastfite}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      RABBITMQ_EXCHANGE: feastfite.events
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_CHANGE_IN_PROD}
+    depends_on:
+      postgres-profile:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # ── Kong API Gateway ──────────────────────────────────────────────
+  kong:
+    image: kong:3.6
+    container_name: feastfite-kong
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    volumes:
+      - ./services/api-gateway/kong.yml:/etc/kong/kong.yml:ro
+    depends_on:
+      - auth-service
+      - territory-service
+      - vote-service
+      - economy-service
+      - profile-service
+
+volumes:
+  postgres-auth-data:
+  postgres-territory-data:
+  postgres-vote-data:
+  postgres-economy-data:
+  postgres-profile-data:
+  redis-data:
+  rabbitmq-data:
+  minio-data:

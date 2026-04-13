@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: feastfite
+  labels:
+    app.kubernetes.io/managed-by: manual
+    environment: development

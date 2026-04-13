@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.npm/
+
+# Build output
+dist/
+build/
+
+# Environment files (per-service .env, never commit real secrets)
+services/**/.env
+frontend/.env
+.env
+!.env.example
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Editor
+.vscode/
+.idea/
+*.sw[po]
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker local volumes
+.docker-volumes/
+
+# Logs
+*.log
+npm-debug.log*

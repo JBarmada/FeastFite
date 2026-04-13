@@ -1,0 +1,29 @@
+{
+  "name": "feastfite",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "services/auth-service",
+    "services/territory-service",
+    "services/vote-service",
+    "services/economy-service",
+    "services/profile-service",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:shared": "npm run build -w packages/shared",
+    "dev": "concurrently -n auth,territory,vote,economy,profile,frontend \"npm run dev -w services/auth-service\" \"npm run dev -w services/territory-service\" \"npm run dev -w services/vote-service\" \"npm run dev -w services/economy-service\" \"npm run dev -w services/profile-service\" \"npm run dev -w frontend\"",
+    "typecheck": "tsc --build --noEmit",
+    "test": "npm test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
