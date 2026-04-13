@@ -1,92 +1,100 @@
 /* ================================================================
-   FeastFite Design Tokens
-   Import once in main.tsx — use everywhere via var(--token-name)
+   FeastFite Design Tokens — Candy theme
+   Bright, sweet, playful. Light background + punchy candy colors.
    ================================================================ */
 
 :root {
   /* ── Brand ──────────────────────────────────────────────────── */
-  --color-primary:        #FF4D2E;   /* hot-sauce red  — CTAs, active states     */
-  --color-primary-hover:  #E03D20;
-  --color-primary-dim:    rgba(255, 77, 46, 0.15);
+  --color-primary:        #A020C8;   /* candy purple  — main brand, CTAs          */
+  --color-primary-hover:  #8A18AC;
+  --color-primary-light:  #EDD6F7;
+  --color-primary-dim:    rgba(160, 32, 200, 0.12);
 
-  --color-secondary:      #FFB800;   /* cheddar gold   — points, rewards, accents */
-  --color-secondary-hover:#E0A200;
-  --color-secondary-dim:  rgba(255, 184, 0, 0.15);
+  --color-secondary:      #FF4FA3;   /* bubblegum pink — secondary actions, love  */
+  --color-secondary-hover:#E03D8E;
+  --color-secondary-light:#FFD6EC;
+  --color-secondary-dim:  rgba(255, 79, 163, 0.12);
 
-  --color-accent:         #00E5A0;   /* fresh mint     — success, confirmed states */
-  --color-accent-hover:   #00C98C;
-  --color-accent-dim:     rgba(0, 229, 160, 0.15);
+  --color-accent:         #00C8E0;   /* candy blue    — highlights, info, links   */
+  --color-accent-hover:   #00AABF;
+  --color-accent-light:   #CCF3F9;
+  --color-accent-dim:     rgba(0, 200, 224, 0.12);
 
   /* ── Backgrounds ─────────────────────────────────────────────── */
-  --color-bg:             #0D0D1A;   /* page background (very dark navy)          */
-  --color-surface:        #1A1A2E;   /* cards, panels                             */
-  --color-surface-raised: #252540;   /* modals, dropdowns, tooltips               */
-  --color-border:         #2E2E50;   /* dividers, input borders                   */
-  --color-border-focus:   #FF4D2E;   /* focused input ring                        */
+  --color-bg:             #FDF5FF;   /* soft lavender-white — main page bg        */
+  --color-surface:        #FFFFFF;   /* cards, panels                             */
+  --color-surface-raised: #F7EAFF;   /* modals, dropdowns, tooltips               */
+  --color-border:         #E2C8F0;   /* dividers, input borders                   */
+  --color-border-focus:   #A020C8;   /* focused input ring                        */
 
   /* ── Text ────────────────────────────────────────────────────── */
-  --color-text-primary:   #F0F0FF;   /* headings, body                            */
-  --color-text-secondary: #9090B0;   /* subtitles, labels                         */
-  --color-text-muted:     #5A5A7A;   /* placeholders, disabled                    */
-  --color-text-inverse:   #0D0D1A;   /* text on light/colored buttons             */
+  --color-text-primary:   #2D1040;   /* deep plum — headings, body                */
+  --color-text-secondary: #7A5490;   /* mid purple — subtitles, labels            */
+  --color-text-muted:     #B89CC8;   /* light purple — placeholders, disabled     */
+  --color-text-inverse:   #FFFFFF;   /* text on colored buttons                   */
 
   /* ── Semantic ────────────────────────────────────────────────── */
-  --color-success:        #00E5A0;
-  --color-success-dim:    rgba(0, 229, 160, 0.15);
-  --color-warning:        #FFB800;
-  --color-warning-dim:    rgba(255, 184, 0, 0.15);
-  --color-error:          #FF4D2E;
-  --color-error-dim:      rgba(255, 77, 46, 0.15);
-  --color-info:           #4A90E2;
-  --color-info-dim:       rgba(74, 144, 226, 0.15);
+  --color-success:        #3DC45A;
+  --color-success-light:  #D4F5DC;
+  --color-success-dim:    rgba(61, 196, 90, 0.12);
+
+  --color-warning:        #FFA800;
+  --color-warning-light:  #FFF0CC;
+  --color-warning-dim:    rgba(255, 168, 0, 0.12);
+
+  --color-error:          #FF3D5A;
+  --color-error-light:    #FFD6DC;
+  --color-error-dim:      rgba(255, 61, 90, 0.12);
+
+  --color-info:           #00C8E0;
+  --color-info-light:     #CCF3F9;
+  --color-info-dim:       rgba(0, 200, 224, 0.12);
 
   /* ── Territory states (map polygon fills) ────────────────────── */
-  --color-territory-unclaimed:      rgba(60,  60,  90,  0.45);
-  --color-territory-unclaimed-border: #3C3C5A;
+  --color-territory-unclaimed:        rgba(180, 150, 200, 0.30);
+  --color-territory-unclaimed-border: #C4A0D8;
 
-  --color-territory-voting:         rgba(255, 184,   0, 0.50);  /* contested — gold pulse */
-  --color-territory-voting-border:  #FFB800;
+  --color-territory-voting:           rgba(255, 168,   0, 0.45);  /* golden pulse  */
+  --color-territory-voting-border:    #FFA800;
 
-  --color-territory-locked:         rgba(74,  144, 226, 0.45);  /* shield active — blue   */
-  --color-territory-locked-border:  #4A90E2;
+  --color-territory-locked:           rgba(  0, 200, 224, 0.40);  /* icy blue      */
+  --color-territory-locked-border:    #00C8E0;
 
-  /* ── Player territory colors (8 distinct map colors) ─────────── */
-  /* Each player/clan is assigned one of these on the backend.       */
-  /* Use the -fill variant (semi-transparent) for map polygons.      */
-  --color-player-tomato:            #FF4D2E;
-  --color-player-tomato-fill:       rgba(255,  77,  46, 0.45);
+  /* ── Player territory colors (8 candy flavors) ───────────────── */
+  --color-player-cherry:      #FF3D5A;
+  --color-player-cherry-fill: rgba(255,  61,  90, 0.40);
 
-  --color-player-mustard:           #FFB800;
-  --color-player-mustard-fill:      rgba(255, 184,   0, 0.45);
+  --color-player-grape:       #A020C8;
+  --color-player-grape-fill:  rgba(160,  32, 200, 0.40);
 
-  --color-player-pickle:            #6BBF3E;
-  --color-player-pickle-fill:       rgba(107, 191,  62, 0.45);
+  --color-player-bubblegum:   #FF4FA3;
+  --color-player-bubblegum-fill: rgba(255, 79, 163, 0.40);
 
-  --color-player-blueberry:         #4A6FE2;
-  --color-player-blueberry-fill:    rgba( 74, 111, 226, 0.45);
+  --color-player-blueberry:   #3D6FFF;
+  --color-player-blueberry-fill: rgba(61, 111, 255, 0.40);
 
-  --color-player-grape:             #9B5DE5;
-  --color-player-grape-fill:        rgba(155,  93, 229, 0.45);
+  --color-player-orange:      #FF7A00;
+  --color-player-orange-fill: rgba(255, 122,   0, 0.40);
 
-  --color-player-salmon:            #FF7F7F;
-  --color-player-salmon-fill:       rgba(255, 127, 127, 0.45);
+  --color-player-lemon:       #FFD600;
+  --color-player-lemon-fill:  rgba(255, 214,   0, 0.40);
 
-  --color-player-mint:              #00C9A7;
-  --color-player-mint-fill:         rgba(  0, 201, 167, 0.45);
+  --color-player-lime:        #3DC45A;
+  --color-player-lime-fill:   rgba( 61, 196,  90, 0.40);
 
-  --color-player-cheddar:           #FF8C42;
-  --color-player-cheddar-fill:      rgba(255, 140,  66, 0.45);
+  --color-player-cotton:      #00C8E0;
+  --color-player-cotton-fill: rgba(  0, 200, 224, 0.40);
 
   /* ── Economy / Shop items ────────────────────────────────────── */
-  --color-points:         #FFB800;   /* points balance — always gold              */
-  --color-item-shield:    #4A90E2;   /* shield item icon                          */
-  --color-item-ram:       #FF4D2E;   /* battering ram icon                        */
-  --color-item-boost:     #00E5A0;   /* double-points boost icon                  */
+  --color-points:       #FFA800;   /* gold coins                                 */
+  --color-item-shield:  #00C8E0;   /* icy blue shield                            */
+  --color-item-ram:     #FF3D5A;   /* red battering ram                          */
+  --color-item-boost:   #3DC45A;   /* green double-points boost                  */
 
   /* ── Typography ──────────────────────────────────────────────── */
-  --font-sans:  'Inter', system-ui, sans-serif;
-  --font-display: 'Fredoka One', 'Inter', sans-serif;  /* headings, monster names */
-  --font-mono:  'JetBrains Mono', monospace;
+  --font-sans:    'Nunito', 'Rounded Mplus 1c', system-ui, sans-serif;
+  --font-display: 'Fredoka One', 'Nunito', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
 
   --text-xs:   0.75rem;
   --text-sm:   0.875rem;
@@ -109,20 +117,20 @@
   --space-12: 3rem;
   --space-16: 4rem;
 
-  /* ── Radius ──────────────────────────────────────────────────── */
-  --radius-sm:   4px;
-  --radius-md:   8px;
-  --radius-lg:   12px;
-  --radius-xl:   16px;
+  /* ── Radius — extra-rounded = candy-crush feel ───────────────── */
+  --radius-sm:   8px;
+  --radius-md:   14px;
+  --radius-lg:   20px;
+  --radius-xl:   28px;
   --radius-full: 9999px;
 
-  /* ── Shadows ─────────────────────────────────────────────────── */
-  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4);
-  --shadow-md:  0 4px 12px rgba(0,0,0,0.5);
-  --shadow-lg:  0 8px 24px rgba(0,0,0,0.6);
-  --shadow-glow-primary:   0 0 16px rgba(255, 77,  46, 0.4);
-  --shadow-glow-secondary: 0 0 16px rgba(255,184,   0, 0.4);
-  --shadow-glow-accent:    0 0 16px rgba(  0,229, 160, 0.4);
+  /* ── Shadows — soft, colorful ────────────────────────────────── */
+  --shadow-sm:  0 2px 6px  rgba(160, 32, 200, 0.10);
+  --shadow-md:  0 4px 16px rgba(160, 32, 200, 0.15);
+  --shadow-lg:  0 8px 30px rgba(160, 32, 200, 0.20);
+  --shadow-glow-primary:   0 0 20px rgba(160,  32, 200, 0.45);
+  --shadow-glow-secondary: 0 0 20px rgba(255,  79, 163, 0.45);
+  --shadow-glow-accent:    0 0 20px rgba(  0, 200, 224, 0.45);
 
   /* ── Transitions ─────────────────────────────────────────────── */
   --transition-fast:   100ms ease;
