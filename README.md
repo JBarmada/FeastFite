@@ -164,11 +164,13 @@ Paste the copied GeoJSON into a chat with Claude or ChatGPT and say:
 
 > Update `services/territory-service/src/db.ts` (the `SEED_TERRITORIES` array) and `services/territory-service/scripts/seedTerritories.ts` to match this GeoJSON. Keep the fun alliterative in-game names for existing territories (e.g. Dulce Dream Den, Chickpea Citadel). Add new ones with a matching alliterative food name.
 
-Apply the changes, then the new territories will appear automatically next time the territory service starts on a fresh database. To force an immediate update on an already-running database, run:
+Apply the changes, then restart with:
 
 ```bash
-cd services/territory-service && npx tsx scripts/seedTerritories.ts
+npm run dev
 ```
+
+The new territories will be seeded automatically on startup.
 
 ---
 
