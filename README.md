@@ -133,6 +133,45 @@ curl.exe http://localhost:3001/health
 
 ---
 
+## Adding or editing territory locations on the map
+
+Territories are real restaurant polygons traced in Google My Maps and exported as GeoJSON. Follow these steps to add a new restaurant or adjust an existing one.
+
+### Step 1 — Edit the map in Google My Maps
+
+Open the shared map:
+[https://www.google.com/maps/d/u/0/edit?mid=1Vh3itYPP609qoCCK6L4NsNN68X5b6nE](https://www.google.com/maps/d/u/0/edit?mid=1Vh3itYPP609qoCCK6L4NsNN68X5b6nE)
+
+**To move or reshape an existing polygon:**
+Click on the shape, then click it again until the corner handles appear. Drag the corners or edges to adjust. It sometimes takes a couple of clicks before the edit handles show up.
+
+**To add a new location:**
+Click the **Draw a line** icon in the toolbar below the search bar (looks like a graph/line icon). Then click on the map to place points one at a time — a triangle is fine to start, you can reshape it after. When you close the shape (click back on the first point) it will prompt you to name it. **Name it after the actual restaurant** (e.g. `Shake Shack`).
+
+Once you have the shape placed, drag it into the correct spot and adjust any neighbouring polygons so nothing overlaps.
+
+### Step 2 — Export as KML
+
+Click the **three dots (⋮)** to the right of the "FeastFite USC Village" layer name in the left panel and choose **Export to KML/KMZ**. In the dialog, **check the box to export as KML** (not KMZ) and click Download. This saves a `.kml` file to your computer.
+
+### Step 3 — Convert KML to GeoJSON
+
+Go to [https://geojson.io](https://geojson.io/#map=17.17/34.025556/-118.284724) and click **Open → File** in the top menu. Select the `.kml` file you just downloaded. The polygons will appear on the map preview. Switch to the **JSON** tab on the right side and copy the entire JSON.
+
+### Step 4 — Update the seed file
+
+Paste the copied GeoJSON into a chat with Claude or ChatGPT and say:
+
+> Update `services/territory-service/src/db.ts` (the `SEED_TERRITORIES` array) and `services/territory-service/scripts/seedTerritories.ts` to match this GeoJSON. Keep the fun alliterative in-game names for existing territories (e.g. Dulce Dream Den, Chickpea Citadel). Add new ones with a matching alliterative food name.
+
+Apply the changes, then the new territories will appear automatically next time the territory service starts on a fresh database. To force an immediate update on an already-running database, run:
+
+```bash
+cd services/territory-service && npx tsx scripts/seedTerritories.ts
+```
+
+---
+
 ## Common problems
 
 | Symptom | Fix |
