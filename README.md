@@ -4,133 +4,131 @@ Food-themed territorial webapp. Cute food monsters claim restaurant territories,
 
 ---
 
-## One-time setup
+## Start everything (full stack)
 
-Run these once after cloning. Order matters.
+After cloning once, these 3 commands start the entire app.
+
+```bash
+npm run setup        # copies .env.example to .env for every service (safe to re-run)
+npm run dev:infra    # starts all databases + Redis + RabbitMQ + MinIO in Docker background
+npm run dev          # starts all 5 services + frontend in one terminal
+```
+
+Open **http://localhost:5173** — register an account and you are in.
+
+That is it. Three commands, one terminal for services, Docker handles the rest in the background.
+
+---
+
+## One-time first install
+
+Run these once right after cloning.
 
 **Mac / Linux**
 ```bash
 git clone https://github.com/JBarmada/FeastFite.git
 cd FeastFite
-
-# Step 1 - install all workspace dependencies
 npm install
-
-# Step 2 - compile the shared package (services import it)
 npm run build -w packages/shared
-
-# Step 3 - create auth service config
-cp services/auth-service/.env.example services/auth-service/.env
-
-# Step 4 - start the database and cache in the background (Docker)
-docker-compose up postgres-auth redis -d
 ```
 
 **Windows (PowerShell)**
 ```powershell
 git clone https://github.com/JBarmada/FeastFite.git
 cd FeastFite
-
-# Step 1 - install all workspace dependencies
 npm install
-
-# Step 2 - compile the shared package (services import it)
 npm run build -w packages/shared
-
-# Step 3 - create auth service config
-Copy-Item servicesuth-service\.env.example servicesuth-service\.env
-
-# Step 4 - start the database and cache in the background (Docker)
-docker-compose up postgres-auth redis -d
 ```
 
----
-
-## Every time you work
-
-You need **2 terminals** open at the same time.
-
-```
-Terminal 1                                   Terminal 2
--------------------------------------------  ----------------------------
-npm run dev -w services/auth-service         npm run dev -w frontend
-  starts the auth API on port 3001             starts the UI on port 5173
-```
-
-Wait for both to say they are listening, then open **http://localhost:5173**.
-
-It redirects to /login. Register an account and you are in.
-
-> The map will be blank until territory-service is running (Dev B job).
-> You only need to start the service you own.
+Then follow the "Start everything" section above.
 
 ---
 
-## What runs where
+## All npm scripts
 
-| What | Command | Port | Notes |
-|------|---------|------|-------|
-| Auth API | `npm run dev -w services/auth-service` | 3001 | Terminal 1 |
-| Frontend UI | `npm run dev -w frontend` | 5173 | Terminal 2 |
-| Postgres (auth) | `docker-compose up postgres-auth -d` | 5432 | Background, no terminal |
-| Redis | `docker-compose up redis -d` | 6379 | Background, no terminal |
-
-Docker containers run silently in the background and do not need a terminal.
-
----
-
-## Developer assignments
-
-Each dev owns one service. Start only yours plus the frontend.
-
-| Dev | Role | Service start command | Port |
-|-----|------|-----------------------|------|
-| Dev A | Auth + infra | `npm run dev -w services/auth-service` | 3001 |
-| Dev B | Territory + map | `npm run dev -w services/territory-service` | 3002 |
-| Dev C | Voting + uploads | `npm run dev -w services/vote-service` | 3003 |
-| Dev D | Economy | `npm run dev -w services/economy-service` | 3004 |
-| Dev D | Profiles | `npm run dev -w services/profile-service` | 3005 |
-| Everyone | Frontend | `npm run dev -w frontend` | 5173 |
-
-Each service folder has a `.env.example` - copy it to `.env` before first run.
+| Script | What it does |
+|--------|-------------|
+| `npm run setup` | Copies `.env.example` to `.env` for every service. Safe to re-run. |
+| `npm run dev:infra` | Starts all Docker infra (Postgres x5, Redis, RabbitMQ, MinIO) in background. |
+| `npm run dev` | Starts all 5 services + frontend together in one terminal via concurrently. |
+| `npm run build:shared` | Compiles the shared package. Run this after pulling changes to packages/shared. |
+| `npm run typecheck` | Type-checks the entire monorepo. Run before pushing. |
 
 ---
 
-## Which Docker containers to start per dev
+## Start only your service (for focused dev work)
 
+You only need to start the infra and service you own.
+
+**Dev A — Auth**
 ```bash
-# Dev A
+npm run setup
 docker-compose up postgres-auth redis -d
-
-# Dev B
-docker-compose up postgres-territory -d
-
-# Dev C
-docker-compose up postgres-vote rabbitmq minio -d
-
-# Dev D
-docker-compose up postgres-economy postgres-profile redis -d
-
-# Everyone - full infra, start once and leave running
-docker-compose up postgres-auth postgres-territory postgres-vote postgres-economy postgres-profile redis rabbitmq minio -d
+npm run dev -w services/auth-service   # Terminal 1
+npm run dev -w frontend                # Terminal 2
 ```
+
+**Dev B — Territory**
+```bash
+npm run setup
+docker-compose up postgres-territory -d
+npm run dev -w services/territory-service   # Terminal 1
+npm run dev -w frontend                     # Terminal 2
+```
+
+**Dev C — Voting**
+```bash
+npm run setup
+docker-compose up postgres-vote rabbitmq minio -d
+npm run dev -w services/vote-service   # Terminal 1
+npm run dev -w frontend                # Terminal 2
+```
+
+**Dev D — Economy + Profiles**
+```bash
+npm run setup
+docker-compose up postgres-economy postgres-profile redis -d
+npm run dev -w services/economy-service   # Terminal 1 (or split into 2)
+npm run dev -w services/profile-service   # Terminal 2
+npm run dev -w frontend                   # Terminal 3
+```
+
+---
+
+## Port reference
+
+| Service | Port |
+|---------|------|
+| Frontend | 5173 |
+| auth-service | 3001 |
+| territory-service | 3002 |
+| vote-service | 3003 |
+| economy-service | 3004 |
+| profile-service | 3005 |
+| Postgres (auth) | 5432 |
+| Postgres (territory) | 5433 |
+| Postgres (vote) | 5434 |
+| Postgres (economy) | 5435 |
+| Postgres (profile) | 5436 |
+| Redis | 6379 |
+| RabbitMQ | 5672 (AMQP) / 15672 (UI) |
+| MinIO | 9000 (API) / 9001 (UI) |
 
 ---
 
 ## Quick health check
 
 ```bash
-# Is auth service up?
 curl http://localhost:3001/health
-# expected: {"status":"ok","service":"auth-service"}
+# {"status":"ok","service":"auth-service"}
 
-# Register a test user (Mac / Linux)
-curl -X POST http://localhost:3001/api/auth/register   -H "Content-Type: application/json"   -d '{"email":"you@test.com","username":"CandyKing","password":"password123"}'
+curl http://localhost:3002/health
+# {"status":"ok","service":"territory-service"}
+```
 
-# Register a test user (Windows PowerShell)
-curl.exe -X POST http://localhost:3001/api/auth/register \`
-  -H "Content-Type: application/json" \`
-  -d '{"email":"you@test.com","username":"CandyKing","password":"password123"}'
+**Windows PowerShell:**
+```powershell
+curl.exe http://localhost:3001/health
 ```
 
 ---
@@ -140,11 +138,11 @@ curl.exe -X POST http://localhost:3001/api/auth/register \`
 | Symptom | Fix |
 |---------|-----|
 | `Cannot find module @feastfite/shared` | Run `npm run build -w packages/shared` |
-| Auth service crashes on start | Check that `services/auth-service/.env` exists |
-| EADDRINUSE - port already in use | Kill the process on that port or restart Docker |
+| Service crashes on start with missing env vars | Run `npm run setup` to generate `.env` files |
+| `EADDRINUSE` port already in use | Another process owns that port — restart Docker or kill it |
 | Map loads but is blank | territory-service is not running (Dev B service) |
 | Login or register returns 500 | Check the auth-service terminal for the actual error |
-| docker-compose up fails | Make sure Docker Desktop is open and running |
+| `docker-compose` command not found | Install Docker Desktop and make sure it is running |
 
 ---
 
@@ -169,6 +167,7 @@ curl.exe -X POST http://localhost:3001/api/auth/register \`
 
 ```
 FeastFite/
+├── scripts/setup.js          cross-platform env setup script
 ├── packages/shared/          shared types, JWT helpers, AMQP factory
 ├── services/
 │   ├── api-gateway/          kong.yml + Dockerfile
