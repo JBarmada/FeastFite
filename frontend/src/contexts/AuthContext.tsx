@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import type { User } from '@feastfite/shared';
 import { authApi } from '../api/authApi';
+import { AUTH_DISABLED, DEV_FAKE_TOKEN, DEV_FAKE_USER } from '../config/devAuth';
 
 interface AuthState {
   user: User | null;
@@ -26,17 +27,31 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const bypassState: AuthState = {
+  user: DEV_FAKE_USER,
+  token: DEV_FAKE_TOKEN,
+  isAuthenticated: true,
+  isLoading: false,
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<AuthState>({
-    user: null,
-    token: null,
-    isAuthenticated: false,
-    isLoading: true, // start true: attempt silent refresh before rendering protected routes
-  });
+  const [state, setState] = useState<AuthState>(
+    AUTH_DISABLED
+      ? bypassState
+      : {
+          user: null,
+          token: null,
+          isAuthenticated: false,
+          isLoading: true,
+        }
+  );
 
   // On mount: try to get a new access token using the httpOnly refresh cookie.
   // If the cookie is absent or expired, the call fails and we stay logged out.
   useEffect(() => {
+    if (AUTH_DISABLED) {
+      return;
+    }
     authApi
       .refresh()
       .then(({ user, token }) => {
@@ -48,6 +63,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
+    if (AUTH_DISABLED) {
+      setState(bypassState);
+      return;
+    }
     setState((s) => ({ ...s, isLoading: true }));
     try {
       const { user, token } = await authApi.login(email, password);
@@ -59,6 +78,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    if (AUTH_DISABLED) {
+      setState(bypassState);
+      return;
+    }
     try {
       await authApi.logout();
     } finally {
@@ -67,6 +90,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const register = useCallback(async (email: string, username: string, password: string) => {
+    if (AUTH_DISABLED) {
+      setState(bypassState);
+      return;
+    }
     setState((s) => ({ ...s, isLoading: true }));
     try {
       const { user, token } = await authApi.register(email, username, password);

@@ -3,6 +3,7 @@ import { Navbar } from '../components/layout/Navbar';
 import { VotingRoom } from '../components/voting/VotingRoom';
 import type { VoteSession } from '../api/voteApi';
 import { WinnerAnnouncement } from '../components/voting/WinnerAnnouncement';
+import { AUTH_DISABLED, DEV_USER_ID } from '../config/devAuth';
 
 // The full voting lobby — Dev C will extend this with a session list.
 export function VotingPage() {
@@ -26,7 +27,7 @@ export function VotingPage() {
         {activeSessionId ? (
           <VotingRoom
             sessionId={activeSessionId}
-            currentUserId="current-user"
+            currentUserId={AUTH_DISABLED ? DEV_USER_ID : 'current-user'}
             onCompleted={(session) => {
               setCompletedSession(session);
               setActiveSessionId(null);

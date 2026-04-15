@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Territory } from '@feastfite/shared';
 import type { VoteSession } from '../api/voteApi';
+import { AUTH_DISABLED, DEV_USER_ID } from '../config/devAuth';
 import { useAuth } from '../contexts/AuthContext';
 import { Navbar } from '../components/layout/Navbar';
 import { MapView } from '../components/map/MapView';
@@ -18,7 +19,7 @@ export function MapPage() {
   const [completedSession, setCompletedSession] = useState<VoteSession | null>(null);
 
   function handleClaim(territory: Territory) {
-    if (!isAuthenticated) {
+    if (!AUTH_DISABLED && !isAuthenticated) {
       // Send the user to login, then bounce them back to the map.
       navigate('/login', { state: { from: { pathname: '/' } } });
       return;
@@ -48,7 +49,7 @@ export function MapPage() {
         }}>
           <VotingRoom
             sessionId={activeSessionId}
-            currentUserId={user?.id ?? 'guest'}
+            currentUserId={AUTH_DISABLED ? DEV_USER_ID : (user?.id ?? 'guest')}
             onCompleted={(session) => {
               setCompletedSession(session);
               setActiveSessionId(null);

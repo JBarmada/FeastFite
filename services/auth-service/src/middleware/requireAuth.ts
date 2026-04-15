@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '@feastfite/shared';
+import { config } from '../config';
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
@@ -10,7 +11,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
   const token = header.slice(7);
   try {
-    req.user = verifyToken(token);
+    req.user = verifyToken(token, config.jwt.secret);
     next();
   } catch {
     res.status(401).json({ error: 'Token invalid or expired' });

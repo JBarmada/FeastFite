@@ -2,25 +2,51 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { createAmqpConnection } from '@feastfite/shared';
+import { pool } from './db/client';
+import { runMigrations } from './db/migrate';
+import { economyRouter } from './routes/economy';
+import { setAmqpChannel } from './events/publisher';
+import { startAwardsConsumer } from './consumers/awards';
 
-const app = express();
-const PORT = process.env['PORT'] ?? 3004;
+const PORT = process.env['PORT'] ?? '3004';
 const SERVICE_NAME = 'economy-service';
 
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
+async function start(): Promise<void> {
+  await pool.query('SELECT 1');
+  await runMigrations();
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: SERVICE_NAME });
+  const app = express();
+
+  app.use(helmet());
+  app.use(
+    cors({
+      origin: ['http://localhost:5173', 'https://feastfite.com'],
+      credentials: true,
+    })
+  );
+  app.use(express.json());
+
+  app.get('/health', (_req, res) => {
+    res.json({ status: 'ok', service: SERVICE_NAME });
+  });
+
+  app.use('/api/economy', economyRouter);
+
+  try {
+    const { channel } = await createAmqpConnection();
+    setAmqpChannel(channel);
+    await startAwardsConsumer(channel);
+  } catch (err) {
+    console.warn('[amqp] could not connect on startup (non-fatal in dev):', String(err));
+  }
+
+  app.listen(PORT, () => {
+    console.info(`[${SERVICE_NAME}] listening on port ${PORT}`);
+  });
+}
+
+start().catch((err) => {
+  console.error(`[${SERVICE_NAME}] fatal startup error:`, err);
+  process.exit(1);
 });
-
-// TODO: mount routers here
-// import { economyRouter } from './routes/economy.js';
-// app.use('/api/economy', economyRouter);
-
-app.listen(PORT, () => {
-  console.info(`[${SERVICE_NAME}] listening on port ${PORT}`);
-});
-
-export default app;

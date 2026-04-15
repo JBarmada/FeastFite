@@ -5,24 +5,15 @@ function env(name: string, fallback?: string): string {
 }
 
 export const config = {
-  port: parseInt(process.env['PORT'] ?? '3001', 10),
+  port: parseInt(process.env['PORT'] ?? '3004', 10),
   nodeEnv: process.env['NODE_ENV'] ?? 'development',
-
-  jwt: {
-    secret: env('JWT_SECRET', 'dev_only_secret_change_in_production'),
-    expiresIn: process.env['JWT_EXPIRES_IN'] ?? '15m',
-  },
 
   db: {
     host: process.env['DB_HOST'] ?? 'localhost',
-    port: parseInt(process.env['DB_PORT'] ?? '5432', 10),
-    database: process.env['DB_NAME'] ?? 'auth_db',
+    port: parseInt(process.env['DB_PORT'] ?? '5435', 10),
+    database: process.env['DB_NAME'] ?? 'economy_db',
     user: process.env['DB_USER'] ?? 'feastfite',
     password: process.env['DB_PASSWORD'] ?? 'devpassword',
-  },
-
-  redis: {
-    url: process.env['REDIS_URL'] ?? 'redis://localhost:6379',
   },
 
   rabbitmq: {
@@ -30,8 +21,13 @@ export const config = {
     exchange: process.env['RABBITMQ_EXCHANGE'] ?? 'feastfite.events',
   },
 
-  refreshToken: {
-    ttlSeconds: 7 * 24 * 60 * 60, // 7 days
-    cookieName: 'ff_refresh',
+  /** Must match auth-service JWT signing secret. */
+  jwtSecret: env('JWT_SECRET', 'dev_only_secret_change_in_production'),
+
+  /** Points granted from RabbitMQ events (tune as needed). */
+  points: {
+    signupBonus: 100,
+    voteWinner: 100,
+    voteParticipant: 25,
   },
 } as const;

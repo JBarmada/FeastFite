@@ -2,10 +2,12 @@ import { Router, type Request, type Response } from 'express';
 import jwt from 'jsonwebtoken';
 import axios from 'axios';
 import { pool } from '../db.js';
+import { DEV_AUTH_BYPASS, DEV_USER_ID } from '../devAuth.js';
 
 export const territoriesRouter = Router();
 
-const JWT_SECRET = process.env['JWT_SECRET'] ?? 'dev_secret_CHANGE_IN_PROD';
+/** Must match auth-service default when JWT_SECRET is unset. */
+const JWT_SECRET = process.env['JWT_SECRET'] ?? 'dev_only_secret_change_in_production';
 const VOTE_SERVICE_URL   = process.env['VOTE_SERVICE_URL']   ?? 'http://vote-service:3003';
 const ECONOMY_SERVICE_URL = process.env['ECONOMY_SERVICE_URL'] ?? 'http://economy-service:3004';
 
@@ -14,6 +16,13 @@ const ECONOMY_SERVICE_URL = process.env['ECONOMY_SERVICE_URL'] ?? 'http://econom
 interface JwtPayload { userId: string; }
 
 function requireAuth(req: Request, res: Response, next: () => void): void {
+  // Dev bypass — set DEV_AUTH_BYPASS false in devAuth.ts to enforce JWT again.
+  if (DEV_AUTH_BYPASS) {
+    (req as Request & { userId: string }).userId = DEV_USER_ID;
+    next();
+    return;
+  }
+
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Missing token' });
@@ -169,15 +178,20 @@ territoriesRouter.post('/:id/battering-ram', requireAuth, async (req: Request, r
     return;
   }
 
-  // Deduct points via economy-service
+  // Consume one Battering Ram from economy inventory (buy from shop first).
   try {
     await axios.post(
-      `${ECONOMY_SERVICE_URL}/api/economy/deduct`,
-      { userId, amount: 50, reason: 'battering_ram', referenceId: territory.id },
+      `${ECONOMY_SERVICE_URL}/api/economy/inventory/use`,
+      { itemId: 'battering_ram' },
       { headers: { Authorization: req.headers.authorization } },
     );
-  } catch {
-    res.status(402).json({ error: 'Insufficient points or economy-service unavailable' });
+  } catch (err) {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+    const msg =
+      status === 400
+        ? 'Buy a Battering Ram in the shop first'
+        : 'Economy service unavailable';
+    res.status(status === 400 ? 402 : 502).json({ error: msg });
     return;
   }
 
@@ -188,5 +202,5 @@ territoriesRouter.post('/:id/battering-ram', requireAuth, async (req: Request, r
     [territory.id],
   );
 
-  res.json({ success: true, pointsDeducted: 50 });
+  res.json({ success: true, itemUsed: 'battering_ram' });
 });

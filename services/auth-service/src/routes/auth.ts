@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import type { Request, Response } from 'express';
+import type { SignOptions } from 'jsonwebtoken';
 import { signToken } from '@feastfite/shared';
 import { db } from '../db/client';
 import { redis } from '../redis/client';
@@ -98,7 +99,11 @@ authRouter.post('/register', async (req: Request, res: Response) => {
 
   const user = toUserPayload(row);
 
-  const accessToken = signToken({ userId: user.id, email: user.email, username: user.username });
+  const accessToken = signToken(
+    { userId: user.id, email: user.email, username: user.username },
+    config.jwt.secret,
+    { expiresIn: config.jwt.expiresIn as SignOptions['expiresIn'] }
+  );
   const refreshToken = generateRefreshToken();
 
   await redis.set(
@@ -149,7 +154,11 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 
   const user = toUserPayload(row);
 
-  const accessToken = signToken({ userId: user.id, email: user.email, username: user.username });
+  const accessToken = signToken(
+    { userId: user.id, email: user.email, username: user.username },
+    config.jwt.secret,
+    { expiresIn: config.jwt.expiresIn as SignOptions['expiresIn'] }
+  );
   const refreshToken = generateRefreshToken();
 
   await redis.set(
@@ -205,11 +214,11 @@ authRouter.post('/refresh', async (req: Request, res: Response) => {
 
   setRefreshCookie(res, newRefreshToken);
 
-  const accessToken = signToken({
-    userId: row.id,
-    email: row.email,
-    username: row.username,
-  });
+  const accessToken = signToken(
+    { userId: row.id, email: row.email, username: row.username },
+    config.jwt.secret,
+    { expiresIn: config.jwt.expiresIn as SignOptions['expiresIn'] }
+  );
 
   const user = toUserPayload(row);
   res.json({ user, token: accessToken });

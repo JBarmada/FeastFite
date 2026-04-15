@@ -21,7 +21,8 @@ export interface ClaimResult {
 
 export interface BatteringRamResult {
   success: boolean;
-  pointsDeducted?: number;
+  /** Present when a shop item was consumed */
+  itemUsed?: string;
 }
 
 export const territoryApi = {
@@ -48,7 +49,7 @@ export const territoryApi = {
     return data;
   },
 
-  /** Spend battering-ram points to break a lock on a territory */
+  /** Use a Battering Ram from inventory (buy in shop first) to break a lock */
   async batteringRam(id: string, token: string): Promise<BatteringRamResult> {
     const { data } = await client.post<BatteringRamResult>(
       `/territories/${id}/battering-ram`,

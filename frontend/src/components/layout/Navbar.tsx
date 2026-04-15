@@ -1,14 +1,43 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { economyApi } from '../../api/economyApi';
+import { AUTH_DISABLED } from '../../config/devAuth';
 
 export function Navbar() {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, logout, token } = useAuth();
+  const [points, setPoints] = useState<number | null>(null);
+
+  const refreshPoints = useCallback(async () => {
+    if (!token) {
+      setPoints(null);
+      return;
+    }
+    try {
+      const bal = await economyApi.getBalance(token);
+      setPoints(bal);
+    } catch {
+      setPoints(null);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void refreshPoints();
+  }, [refreshPoints]);
+
+  useEffect(() => {
+    const onBalance = () => void refreshPoints();
+    window.addEventListener('feastfite:balance', onBalance);
+    return () => window.removeEventListener('feastfite:balance', onBalance);
+  }, [refreshPoints]);
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
   async function handleLogout() {
     await logout();
-    navigate('/login');
+    if (!AUTH_DISABLED) {
+      navigate('/login');
+    }
   }
 
   const navLink = (to: string, label: string, emoji: string) => {
@@ -61,6 +90,22 @@ export function Navbar() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         {isAuthenticated ? (
           <>
+            {points !== null && (
+              <span
+                title="Candy points"
+                style={{
+                  color: '#4a3200',
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                  background: 'linear-gradient(135deg, #FFE08A 0%, #FFA800 100%)',
+                  padding: '4px 12px',
+                  borderRadius: '999px',
+                  border: '2px solid rgba(255,255,255,0.5)',
+                }}
+              >
+                🍬 {points.toLocaleString()} pts
+              </span>
+            )}
             <span style={{
               color: '#fff', fontSize: '0.82rem', fontWeight: 600,
               background: 'rgba(255,255,255,0.2)', padding: '4px 12px',
@@ -68,9 +113,25 @@ export function Navbar() {
             }}>
               👋 {user?.username}
             </span>
-            <button onClick={handleLogout} style={ghostBtn}>
-              Logout
-            </button>
+            {AUTH_DISABLED ? (
+              <span
+                title="Set AUTH_DISABLED to false in frontend/src/config/devAuth.ts"
+                style={{
+                  color: 'rgba(255,255,255,0.95)',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  background: 'rgba(0,0,0,0.2)',
+                  padding: '4px 10px',
+                  borderRadius: '8px',
+                }}
+              >
+                Auth off
+              </span>
+            ) : (
+              <button type="button" onClick={handleLogout} style={ghostBtn}>
+                Logout
+              </button>
+            )}
           </>
         ) : (
           <>
