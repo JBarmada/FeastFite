@@ -2,9 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-// DEV_PROXY=direct  → each service on its own port (no Docker/Kong needed)
-// DEV_PROXY=kong    → everything through Kong on :8000 (default / full stack)
-const useDirect = process.env['DEV_PROXY'] === 'direct';
+// DEV_PROXY=kong  → route everything through Kong on :8000 (full-stack Docker)
+// default (no env var) → each service on its own port, no Kong needed
+const useDirect = process.env['DEV_PROXY'] !== 'kong';
 
 const directProxy = {
   '/api/auth':      { target: 'http://localhost:3001', changeOrigin: true },
