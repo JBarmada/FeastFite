@@ -1,0 +1,8 @@
+# Force UTF-8 LF for all text files — prevents Windows UTF-16 re-encoding
+* text=auto eol=lf
+*.md text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.env.example text eol=lf
