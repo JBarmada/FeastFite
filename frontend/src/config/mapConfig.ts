@@ -20,20 +20,19 @@ export const TILE_PROVIDER = {
   subdomains: 'abc',
 } as const;
 
-// USC Village starting view
-export const USC_VILLAGE_CENTER: [number, number] = [34.0259, -118.2848];
+// Center of the real USC Village polygon cluster
+export const USC_VILLAGE_CENTER: [number, number] = [34.0250, -118.2851];
 
 export const MAP_CONFIG = {
   defaultCenter: USC_VILLAGE_CENTER,
   defaultZoom: 17,
-  minZoom: 14,
-  maxZoom: 19,
+  minZoom: 17,
+  maxZoom: 21,
 
-  // Hard boundary — users cannot pan outside this box.
-  // Expand these coords + add more seed territories to open new zones.
+  // Bounds derived from the actual polygon extents + small padding
   maxBounds: [
-    [34.0130, -118.2950], // SW corner (south of Exposition Park)
-    [34.0300, -118.2800], // NE corner (north of USC Village)
+    [34.0237, -118.2868], // SW corner
+    [34.0263, -118.2838], // NE corner
   ] as [[number, number], [number, number]],
 } as const;
 

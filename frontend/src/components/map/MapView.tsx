@@ -13,15 +13,13 @@ import { TerritoryPanel } from './TerritoryPanel';
 
 function polygonStyle(territory: Territory, isSelected: boolean): PathOptions {
   const fill = ownerColor(territory.ownerId);
-  const isLocked =
-    territory.lockedUntil != null && new Date(territory.lockedUntil) > new Date();
 
   return {
     fillColor: fill,
-    fillOpacity: isSelected ? 0.72 : 0.42,
-    color: isLocked ? '#FF3366' : fill,
-    weight: isSelected ? 3 : isLocked ? 2 : 1.5,
-    dashArray: isLocked ? '6 4' : undefined,
+    fillOpacity: isSelected ? 0.82 : 0.58,
+    color: '#5B0EA6',          // dark purple border
+    weight: isSelected ? 3 : 2,
+    dashArray: '6 4',          // always dotted
   };
 }
 
@@ -86,6 +84,8 @@ export function MapView({ onClaim }: MapViewProps) {
           url={TILE_PROVIDER.url}
           attribution={TILE_PROVIDER.attribution}
           subdomains={TILE_PROVIDER.subdomains}
+          maxNativeZoom={19}
+          maxZoom={21}
         />
 
         <BBoxLoader onLoad={setTerritories} />
