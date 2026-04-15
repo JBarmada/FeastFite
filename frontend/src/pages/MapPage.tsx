@@ -1,53 +1,80 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Territory } from '@feastfite/shared';
+import type { VoteSession } from '../api/voteApi';
+import { useAuth } from '../contexts/AuthContext';
+import { Navbar } from '../components/layout/Navbar';
 import { MapView } from '../components/map/MapView';
+import { UploadModal } from '../components/voting/UploadModal';
+import { WinnerAnnouncement } from '../components/voting/WinnerAnnouncement';
+import { VotingRoom } from '../components/voting/VotingRoom';
 
 export function MapPage() {
-  /**
-   * Dev C replaces this stub with the actual photo-upload / claim flow.
-   * Dev B fires `onClaim`; Dev C provides the implementation.
-   */
+  const { isAuthenticated, user } = useAuth();
+  const navigate = useNavigate();
+
+  const [claimingTerritory, setClaimingTerritory] = useState<Territory | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [completedSession, setCompletedSession] = useState<VoteSession | null>(null);
+
   function handleClaim(territory: Territory) {
-    console.info('[MapPage] claim initiated for territory:', territory.id, territory.name);
-    // TODO (Dev C): open upload modal here
+    if (!isAuthenticated) {
+      // Send the user to login, then bounce them back to the map.
+      navigate('/login', { state: { from: { pathname: '/' } } });
+      return;
+    }
+    setClaimingTerritory(territory);
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100vh',
-        background: '#FFF5FC',
-        fontFamily: "'Segoe UI', system-ui, sans-serif",
-      }}
-    >
-      {/* Header */}
-      <header
-        style={{
-          padding: '10px 20px',
-          background: 'linear-gradient(90deg, #FF6B9D 0%, #C77DFF 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          boxShadow: '0 2px 8px rgba(199,125,255,0.35)',
-          flexShrink: 0,
-        }}
-      >
-        <span style={{ fontSize: '1.5rem' }}>🍭</span>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#fff', letterSpacing: '0.04em' }}>
-            FeastFite
-          </h1>
-          <p style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255,255,255,0.85)' }}>
-            Claim your territory. Rule the block.
-          </p>
-        </div>
-      </header>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--color-bg)' }}>
+      <Navbar />
 
-      {/* Map fills remaining height */}
+      {/* Map fills all remaining height */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         <MapView onClaim={handleClaim} />
       </div>
+
+      {/* Live vote room — floats over the map when a session is active */}
+      {activeSessionId && (
+        <div style={{
+          position: 'fixed', bottom: '20px', right: '20px',
+          zIndex: 'var(--z-panel)' as never,
+          width: 'clamp(300px, 40vw, 480px)',
+          background: 'var(--color-surface)',
+          borderRadius: 'var(--radius-xl)',
+          boxShadow: 'var(--shadow-lg)',
+          overflow: 'hidden',
+        }}>
+          <VotingRoom
+            sessionId={activeSessionId}
+            currentUserId={user?.id ?? 'guest'}
+            onCompleted={(session) => {
+              setCompletedSession(session);
+              setActiveSessionId(null);
+            }}
+          />
+        </div>
+      )}
+
+      <UploadModal
+        isOpen={claimingTerritory !== null}
+        territoryId={claimingTerritory?.id ?? ''}
+        onClose={() => setClaimingTerritory(null)}
+        onSessionCreated={(sessionId) => {
+          setCompletedSession(null);
+          setActiveSessionId(sessionId);
+          setClaimingTerritory(null);
+        }}
+      />
+
+      <WinnerAnnouncement
+        session={completedSession}
+        onDismiss={() => {
+          setCompletedSession(null);
+          setActiveSessionId(null);
+        }}
+      />
     </div>
   );
 }
