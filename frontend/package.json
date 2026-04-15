@@ -12,12 +12,15 @@
   "dependencies": {
     "@feastfite/shared": "*",
     "axios": "^1.7.9",
+    "leaflet": "^1.9.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
     "react-router-dom": "^6.28.1",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.14",
     "@types/node": "^20.17.0",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",

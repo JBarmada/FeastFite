@@ -5,6 +5,7 @@ import { PrivateRoute } from './components/PrivateRoute';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { MapPage } from './pages/MapPage';
 import { UploadModal } from './components/voting/UploadModal';
 import { VotingRoom } from './components/voting/VotingRoom';
 import { WinnerAnnouncement } from './components/voting/WinnerAnnouncement';
@@ -91,8 +92,10 @@ export function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          {/* Map is public during dev — restore PrivateRoute once auth is wired end-to-end */}
+          <Route path="/" element={<MapPage />} />
           <Route element={<PrivateRoute />}>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/dashboard" element={<Dashboard />} />
           </Route>
         </Routes>
       </AuthProvider>
