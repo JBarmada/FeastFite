@@ -1,0 +1,98 @@
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+
+export function Navbar() {
+  const { isAuthenticated, user, logout } = useAuth();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  async function handleLogout() {
+    await logout();
+    navigate('/login');
+  }
+
+  const navLink = (to: string, label: string, emoji: string) => {
+    const active = pathname === to;
+    return (
+      <Link to={to} style={{
+        display: 'flex', alignItems: 'center', gap: '5px',
+        padding: '6px 14px', borderRadius: '999px', textDecoration: 'none',
+        fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.02em',
+        background: active ? 'rgba(255,255,255,0.30)' : 'transparent',
+        color: '#fff',
+        transition: 'background 150ms ease',
+      }}>
+        <span>{emoji}</span>{label}
+      </Link>
+    );
+  };
+
+  return (
+    <header style={{
+      position: 'sticky', top: 0, zIndex: 'var(--z-panel)' as never,
+      background: 'linear-gradient(90deg, #A020C8 0%, #FF4FA3 100%)',
+      boxShadow: '0 2px 12px rgba(160,32,200,0.35)',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '0 20px', height: '56px', flexShrink: 0,
+    }}>
+
+      {/* ── Logo ── */}
+      <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
+        <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>🍭</span>
+        <div>
+          <div style={{ color: '#fff', fontWeight: 900, fontSize: '1.05rem', lineHeight: 1, letterSpacing: '0.04em' }}>
+            FeastFite
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.65rem', lineHeight: 1.2 }}>
+            Claim your territory. Rule the block.
+          </div>
+        </div>
+      </Link>
+
+      {/* ── Nav links ── */}
+      <nav style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {navLink('/', 'Map', '🗺️')}
+        {navLink('/voting', 'Voting', '⚔️')}
+        {navLink('/shop', 'Shop', '🛒')}
+        {isAuthenticated && navLink('/profile', 'Profile', '👾')}
+      </nav>
+
+      {/* ── Auth ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {isAuthenticated ? (
+          <>
+            <span style={{
+              color: '#fff', fontSize: '0.82rem', fontWeight: 600,
+              background: 'rgba(255,255,255,0.2)', padding: '4px 12px',
+              borderRadius: '999px',
+            }}>
+              👋 {user?.username}
+            </span>
+            <button onClick={handleLogout} style={ghostBtn}>
+              Logout
+            </button>
+          </>
+        ) : (
+          <>
+            <Link to="/login" style={ghostBtn as React.CSSProperties}>Login</Link>
+            <Link to="/register" style={solidBtn as React.CSSProperties}>Sign up</Link>
+          </>
+        )}
+      </div>
+    </header>
+  );
+}
+
+const ghostBtn: React.CSSProperties = {
+  padding: '6px 16px', borderRadius: '999px', fontSize: '0.85rem',
+  fontWeight: 700, cursor: 'pointer', textDecoration: 'none',
+  border: '2px solid rgba(255,255,255,0.6)', background: 'transparent',
+  color: '#fff', transition: 'background 150ms ease',
+};
+
+const solidBtn: React.CSSProperties = {
+  padding: '6px 16px', borderRadius: '999px', fontSize: '0.85rem',
+  fontWeight: 700, cursor: 'pointer', textDecoration: 'none',
+  border: '2px solid #fff', background: '#fff',
+  color: '#A020C8', transition: 'opacity 150ms ease',
+};
