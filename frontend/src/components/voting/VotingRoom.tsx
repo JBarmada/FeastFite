@@ -125,8 +125,13 @@ export function VotingRoom({ sessionId, currentUserId, onCompleted }: VotingRoom
           return (
             <article className="candidate-card" key={candidate.id}>
               <div className="candidate-photo">
-                <span>{candidate.photoKey.split('/').pop()}</span>
+                <img
+                  alt={`${candidate.displayName} dish`}
+                  className="candidate-photo-image"
+                  src={candidate.photoUrl}
+                />
               </div>
+              <p className="candidate-file-label">{candidate.photoKey.split('/').pop()}</p>
               <h3>{candidate.displayName}</h3>
               <p className="vote-total">{candidate.votes} sugar stars</p>
               <button

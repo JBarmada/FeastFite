@@ -29,6 +29,10 @@ interface VoteCandidate {
   votes: number;
 }
 
+interface ClientVoteCandidate extends VoteCandidate {
+  photoUrl: string;
+}
+
 interface VoteSessionRecord {
   id: string;
   territoryId: string;
@@ -42,6 +46,10 @@ interface VoteSessionRecord {
   winnerPhotoKey: string | null;
   candidates: VoteCandidate[];
   votesByUser: Record<string, string>;
+}
+
+interface ClientVoteSession extends Omit<VoteSessionRecord, 'candidates'> {
+  candidates: ClientVoteCandidate[];
 }
 
 interface UploadUrlRequest {
@@ -175,10 +183,10 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
 
   await saveSession(session);
   scheduleFinalization(session);
-  emitSessionUpdate(session);
+  void emitSessionUpdate(session);
 
   return res.status(201).json({
-    session,
+    session: await serializeSession(session),
     websocketPath: '/ws/vote',
   });
 });
@@ -190,7 +198,7 @@ app.get('/api/vote/votes/sessions/:sessionId', async (req, res) => {
     return res.status(404).json({ message: 'Voting session not found.' });
   }
 
-  return res.status(200).json({ session });
+  return res.status(200).json({ session: await serializeSession(session) });
 });
 
 app.post('/api/vote/votes/sessions/:sessionId/vote', async (req, res) => {
@@ -215,14 +223,14 @@ app.post('/api/vote/votes/sessions/:sessionId/vote', async (req, res) => {
     const freshSession = await loadSession(session.id);
     return res.status(409).json({
       message: 'Voting session has ended.',
-      session: freshSession,
+      session: freshSession ? await serializeSession(freshSession) : null,
     });
   }
 
   if (session.votesByUser[userId]) {
     return res.status(409).json({
       message: 'This user has already voted in the session.',
-      session,
+      session: await serializeSession(session),
     });
   }
 
@@ -246,9 +254,9 @@ app.post('/api/vote/votes/sessions/:sessionId/vote', async (req, res) => {
   };
 
   await publishEvent('vote.participant', participantEvent);
-  emitSessionUpdate(session);
+  void emitSessionUpdate(session);
 
-  return res.status(200).json({ session });
+  return res.status(200).json({ session: await serializeSession(session) });
 });
 
 io.on('connection', (socket) => {
@@ -264,7 +272,7 @@ io.on('connection', (socket) => {
     const session = await loadSession(requestedSessionId);
 
     if (session) {
-      socket.emit('session:update', session);
+      socket.emit('session:update', await serializeSession(session));
     }
   });
 });
@@ -305,6 +313,68 @@ async function ensureMinioBucket(): Promise<void> {
     await minio.makeBucket(MINIO_BUCKET_PHOTOS);
     console.info(`[${SERVICE_NAME}] created MinIO bucket ${MINIO_BUCKET_PHOTOS}`);
   }
+}
+
+async function serializeSession(session: VoteSessionRecord): Promise<ClientVoteSession> {
+  return {
+    ...session,
+    candidates: await Promise.all(
+      session.candidates.map(async (candidate) => ({
+        ...candidate,
+        photoUrl: await resolveCandidatePhotoUrl(candidate),
+      }))
+    ),
+  };
+}
+
+async function resolveCandidatePhotoUrl(candidate: VoteCandidate): Promise<string> {
+  if (candidate.photoKey.startsWith('seed/')) {
+    return buildFallbackImageDataUrl(candidate.displayName);
+  }
+
+  try {
+    return await minio.presignedGetObject(MINIO_BUCKET_PHOTOS, candidate.photoKey, 60 * 60);
+  } catch (error) {
+    console.warn(
+      `[${SERVICE_NAME}] failed to create read URL for ${candidate.photoKey}, using fallback`,
+      error
+    );
+    return buildFallbackImageDataUrl(candidate.displayName);
+  }
+}
+
+function buildFallbackImageDataUrl(label: string): string {
+  const safeLabel = escapeXml(label);
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ffd682" />
+          <stop offset="100%" stop-color="#f6a4bc" />
+        </linearGradient>
+      </defs>
+      <rect width="640" height="480" rx="36" fill="url(#bg)" />
+      <circle cx="140" cy="120" r="44" fill="#fff4d3" opacity="0.65" />
+      <circle cx="520" cy="340" r="58" fill="#fff4d3" opacity="0.45" />
+      <text x="320" y="228" text-anchor="middle" font-size="34" font-family="Trebuchet MS, sans-serif" fill="#5c3759">
+        ${safeLabel}
+      </text>
+      <text x="320" y="278" text-anchor="middle" font-size="18" font-family="Trebuchet MS, sans-serif" fill="#8e5372">
+        Waiting for dish photo
+      </text>
+    </svg>
+  `.trim();
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
 }
 
 async function restoreActiveSessions(): Promise<void> {
@@ -378,8 +448,8 @@ async function finalizeSession(sessionId: string): Promise<void> {
   session.winnerId = winner.userId;
   session.winnerPhotoKey = winner.photoKey;
   await saveSession(session);
-  emitSessionUpdate(session);
-  emitWinnerAnnouncement(session);
+  void emitSessionUpdate(session);
+  void emitWinnerAnnouncement(session);
 
   const winnerEvent: VoteWinnerDeclaredEvent = {
     eventType: 'vote.winner_declared',
@@ -399,7 +469,10 @@ function pickWinner(candidates: VoteCandidate[]): VoteCandidate {
   return tiedCandidates[Math.floor(Math.random() * tiedCandidates.length)];
 }
 
-async function publishEvent(routingKey: string, payload: VoteWinnerDeclaredEvent | VoteParticipantEvent) {
+async function publishEvent(
+  routingKey: string,
+  payload: VoteWinnerDeclaredEvent | VoteParticipantEvent
+) {
   if (!amqpChannel) {
     console.warn(`[${SERVICE_NAME}] AMQP channel unavailable, skipping publish for ${routingKey}`);
     return;
@@ -411,16 +484,21 @@ async function publishEvent(routingKey: string, payload: VoteWinnerDeclaredEvent
   });
 }
 
-function emitSessionUpdate(session: VoteSessionRecord): void {
-  io.to(getRoomName(session.id)).emit('session:update', session);
+async function emitSessionUpdate(session: VoteSessionRecord): Promise<void> {
+  io.to(getRoomName(session.id)).emit('session:update', await serializeSession(session));
 }
 
-function emitWinnerAnnouncement(session: VoteSessionRecord): void {
+async function emitWinnerAnnouncement(session: VoteSessionRecord): Promise<void> {
   const winner = session.candidates.find((candidate) => candidate.userId === session.winnerId);
   io.to(getRoomName(session.id)).emit('session:completed', {
     sessionId: session.id,
     territoryId: session.territoryId,
-    winner,
+    winner: winner
+      ? {
+          ...winner,
+          photoUrl: await resolveCandidatePhotoUrl(winner),
+        }
+      : null,
     completedAt: session.completedAt,
   });
 }

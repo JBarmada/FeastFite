@@ -18,6 +18,7 @@ export interface VoteCandidate {
   userId: string;
   displayName: string;
   photoKey: string;
+  photoUrl: string;
   votes: number;
 }
 
