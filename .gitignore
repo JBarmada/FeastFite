@@ -20,6 +20,9 @@ frontend/.env
 .idea/
 *.sw[po]
 
+# Claude Code local settings (per-developer, not shared)
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
