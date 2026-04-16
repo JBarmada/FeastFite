@@ -83,6 +83,7 @@ export function Navbar() {
         {navLink('/', 'Map', '🗺️')}
         {navLink('/voting', 'Voting', '⚔️')}
         {navLink('/shop', 'Shop', '🛒')}
+        {navLink('/leaderboard', 'Leaders', '🏆')}
         {isAuthenticated && navLink('/profile', 'Profile', '👾')}
       </nav>
 

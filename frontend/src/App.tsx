@@ -10,6 +10,7 @@ import { MapPage } from './pages/MapPage';
 import { VotingPage } from './pages/VotingPage';
 import { ShopPage } from './pages/ShopPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { LeaderboardPage } from './pages/LeaderboardPage';
 
 export function App() {
   return (
@@ -27,6 +28,7 @@ export function App() {
           {/* Public stubs (shop + voting are viewable, actual actions will be auth-gated later) */}
           <Route path="/voting" element={<VotingPage />} />
           <Route path="/shop" element={<ShopPage />} />
+          <Route path="/leaderboard" element={<LeaderboardPage />} />
 
           {/* Protected routes */}
           <Route element={<PrivateRoute />}>

@@ -3,6 +3,7 @@ import type {
   UserRegisteredEvent,
   VoteParticipantEvent,
   VoteWinnerDeclaredEvent,
+  TerritoryClaimedEvent,
 } from '@feastfite/shared';
 import { config } from '../config';
 import { awardPoints } from '../ledger';
@@ -12,7 +13,8 @@ const QUEUE = 'economy-service.awards';
 type Incoming =
   | VoteWinnerDeclaredEvent
   | VoteParticipantEvent
-  | UserRegisteredEvent;
+  | UserRegisteredEvent
+  | TerritoryClaimedEvent;
 
 export async function startAwardsConsumer(channel: Channel): Promise<void> {
   const ex = config.rabbitmq.exchange;
@@ -21,6 +23,7 @@ export async function startAwardsConsumer(channel: Channel): Promise<void> {
   await channel.bindQueue(QUEUE, ex, 'vote.winner_declared');
   await channel.bindQueue(QUEUE, ex, 'vote.participant');
   await channel.bindQueue(QUEUE, ex, 'user.registered');
+  await channel.bindQueue(QUEUE, ex, 'territory.claimed');
   channel.prefetch(1);
 
   channel.consume(QUEUE, async (msg) => {
@@ -44,7 +47,8 @@ export async function startAwardsConsumer(channel: Channel): Promise<void> {
             e.winnerId,
             config.points.voteWinner,
             'vote_winner',
-            ref
+            ref,
+            e.territoryId
           );
           break;
         }
@@ -55,7 +59,8 @@ export async function startAwardsConsumer(channel: Channel): Promise<void> {
             e.userId,
             config.points.voteParticipant,
             'vote_participant',
-            ref
+            ref,
+            e.territoryId
           );
           break;
         }
@@ -63,6 +68,18 @@ export async function startAwardsConsumer(channel: Channel): Promise<void> {
           const e = raw as UserRegisteredEvent;
           const ref = `signup:${e.userId}`;
           await awardPoints(e.userId, config.points.signupBonus, 'signup_bonus', ref);
+          break;
+        }
+        case 'territory.claimed': {
+          const e = raw as TerritoryClaimedEvent;
+          const ref = `claim:${e.territoryId}:${e.timestamp}`;
+          await awardPoints(
+            e.newOwnerId,
+            50, // 50 points for territory ownership
+            'territory_claim',
+            ref,
+            e.territoryId
+          );
           break;
         }
         default:

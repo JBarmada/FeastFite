@@ -8,10 +8,19 @@ export async function runMigrations(): Promise<void> {
       delta        INTEGER NOT NULL,
       reason       TEXT NOT NULL,
       reference_id TEXT,
+      restaurant_id UUID,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS user_stats (
+      user_id          UUID PRIMARY KEY,
+      total_points     INTEGER NOT NULL DEFAULT 0,
+      current_streak   INTEGER NOT NULL DEFAULT 0,
+      last_upload_date DATE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger_entries (user_id);
+    CREATE INDEX IF NOT EXISTS idx_ledger_restaurant ON ledger_entries (restaurant_id);
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_idempotency
       ON ledger_entries (reference_id)

@@ -6,6 +6,7 @@ import { createAmqpConnection } from '@feastfite/shared';
 import { pool } from './db/client';
 import { runMigrations } from './db/migrate';
 import { economyRouter } from './routes/economy';
+import { leaderboardRouter } from './routes/leaderboard';
 import { setAmqpChannel } from './events/publisher';
 import { startAwardsConsumer } from './consumers/awards';
 
@@ -32,6 +33,7 @@ async function start(): Promise<void> {
   });
 
   app.use('/api/economy', economyRouter);
+  app.use('/api/economy/leaderboard', leaderboardRouter);
 
   try {
     const { channel } = await createAmqpConnection();
