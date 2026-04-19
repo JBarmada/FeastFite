@@ -27,20 +27,51 @@ export async function startVoteWinnerConsumer(channel: Channel): Promise<void> {
       return;
     }
 
-    const { territoryId, winnerId, winnerPhotoKey } = event;
+    const { territoryId, winnerId, winnerPhotoKey, winnerName, sessionId, candidates } = event;
 
     try {
       await pool.query(
         `UPDATE territories
             SET owner_id       = $1,
+                owner_name     = $4,
                 owner_type     = 'user',
                 dish_photo_key = $2,
                 captured_at    = NOW(),
-                locked_until   = NOW() + INTERVAL '1 hour',
+                locked_until   = NULL,
                 updated_at     = NOW()
           WHERE id = $3`,
-        [winnerId, winnerPhotoKey, territoryId],
+        [winnerId, winnerPhotoKey, territoryId, winnerName ?? 'Unknown Foodie'],
       );
+
+      // Persist per-candidate vote stats to claim_history
+      if (candidates && candidates.length > 0) {
+        for (const c of candidates) {
+          const isWinner = c.userId === winnerId;
+          await pool.query(
+            `UPDATE claim_history
+                SET is_winner   = $1,
+                    avg_rating  = $2,
+                    vote_count  = $3,
+                    total_rating = $4
+              WHERE session_id = $5 AND claimant_id = $6`,
+            [isWinner, c.avgRating, c.votes, c.totalRating, sessionId, c.userId],
+          );
+          // If no existing row (e.g. defender wasn't logged on initial claim), insert one
+          if (isWinner) {
+            await pool.query(
+              `INSERT INTO claim_history
+                 (territory_id, claimant_id, claimant_name, photo_key, is_winner,
+                  session_id, avg_rating, vote_count, total_rating)
+               SELECT $1, $2, $3, $4, true, $5, $6, $7, $8
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM claim_history WHERE session_id = $5 AND claimant_id = $2
+               )`,
+              [territoryId, c.userId, winnerName ?? 'Unknown Foodie', c.photoKey,
+               sessionId, c.avgRating, c.votes, c.totalRating],
+            );
+          }
+        }
+      }
 
       console.info(
         `[voteWinner] territory ${territoryId} committed to winner ${winnerId}`,

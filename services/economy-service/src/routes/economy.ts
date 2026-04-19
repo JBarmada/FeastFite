@@ -129,6 +129,77 @@ economyRouter.post('/shop/purchase', requireAuth, async (req: Request, res: Resp
   }
 });
 
+// ── GET /stats ───────────────────────────────────────────────────
+// Balance + streak for the current user.
+
+economyRouter.get('/stats', requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as Request & { userId: string }).userId;
+  try {
+    const balance = await getBalance(userId);
+    const { rows } = await pool.query<{ current_streak: number; last_upload_date: string | null }>(
+      `SELECT current_streak, last_upload_date FROM user_stats WHERE user_id = $1`,
+      [userId],
+    );
+    const streak = rows[0]?.current_streak ?? 0;
+    const lastUploadDate = rows[0]?.last_upload_date ?? null;
+    res.json({ balance, streak, lastUploadDate });
+  } catch (err) {
+    console.error('[economy] stats failed:', err);
+    res.status(500).json({ error: 'Failed to load stats' });
+  }
+});
+
+// ── GET /ledger ───────────────────────────────────────────────────
+// Recent ledger entries for the current user.
+
+economyRouter.get('/ledger', requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as Request & { userId: string }).userId;
+  const limit = Math.min(Number(req.query['limit'] ?? 30), 100);
+  try {
+    const { rows } = await pool.query<{
+      id: string; delta: number; reason: string;
+      restaurant_id: string | null; created_at: string;
+    }>(
+      `SELECT id, delta, reason, restaurant_id, created_at
+       FROM ledger_entries WHERE user_id = $1
+       ORDER BY created_at DESC LIMIT $2`,
+      [userId, limit],
+    );
+    res.json({
+      entries: rows.map((r) => ({
+        id: r.id,
+        delta: r.delta,
+        reason: r.reason,
+        territoryId: r.restaurant_id,
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (err) {
+    console.error('[economy] ledger failed:', err);
+    res.status(500).json({ error: 'Failed to load ledger' });
+  }
+});
+
+// ── GET /leaderboard ─────────────────────────────────────────────
+// Top 50 users by total points (sum of all positive ledger entries).
+
+economyRouter.get('/leaderboard', async (_req: Request, res: Response) => {
+  const { rows } = await pool.query<{ user_id: string; total_points: string }>(
+    `SELECT user_id, COALESCE(SUM(delta), 0)::bigint AS total_points
+     FROM ledger_entries
+     GROUP BY user_id
+     ORDER BY total_points DESC
+     LIMIT 50`
+  );
+  res.json({
+    leaderboard: rows.map((r, i) => ({
+      rank: i + 1,
+      userId: r.user_id,
+      totalPoints: Number(r.total_points),
+    })),
+  });
+});
+
 // ── POST /inventory/use ───────────────────────────────────────────
 // Consumes one consumable (e.g. battering ram) from inventory.
 

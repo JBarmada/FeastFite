@@ -54,7 +54,8 @@ export async function startAwardsConsumer(channel: Channel): Promise<void> {
         }
         case 'vote.participant': {
           const e = raw as VoteParticipantEvent;
-          const ref = `vote_part:${e.sessionId}:${e.userId}`;
+          // Award participation points to the voter
+          const ref = `vote_part:${e.sessionId}:${e.userId}:${e.candidateId}`;
           await awardPoints(
             e.userId,
             config.points.voteParticipant,
@@ -62,6 +63,17 @@ export async function startAwardsConsumer(channel: Channel): Promise<void> {
             ref,
             e.territoryId
           );
+          // Award rating points to the dish owner (rating * 10)
+          if (e.candidateUserId && e.candidateUserId !== e.userId) {
+            const ratingRef = `dish_rated:${e.sessionId}:${e.candidateId}:${e.userId}`;
+            await awardPoints(
+              e.candidateUserId,
+              (e.rating ?? 5) * 10,
+              `dish_rated`,
+              ratingRef,
+              e.territoryId
+            );
+          }
           break;
         }
         case 'user.registered': {

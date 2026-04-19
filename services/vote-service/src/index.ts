@@ -13,8 +13,8 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = process.env['PORT'] ?? 3003;
 const SERVICE_NAME = 'vote-service';
-const SESSION_DURATION_MS = 10 * 60 * 1000;
-const SESSION_TTL_SECONDS = 24 * 60 * 60;
+// Sessions are open-ended — no automatic timer close
+const SESSION_TTL_SECONDS = 365 * 24 * 60 * 60;
 const VOTE_REDIS_PREFIX = 'vote-service';
 const RABBITMQ_EXCHANGE = process.env['RABBITMQ_EXCHANGE'] ?? 'feastfite.events';
 const MINIO_BUCKET_PHOTOS = process.env['MINIO_BUCKET_PHOTOS'] ?? 'fight-photos';
@@ -27,6 +27,7 @@ interface VoteCandidate {
   displayName: string;
   photoKey: string;
   votes: number;
+  totalRating: number;
 }
 
 interface ClientVoteCandidate extends VoteCandidate {
@@ -45,7 +46,8 @@ interface VoteSessionRecord {
   winnerId: string | null;
   winnerPhotoKey: string | null;
   candidates: VoteCandidate[];
-  votesByUser: Record<string, string>;
+  votesByUser: Record<string, string[]>;
+  ratingByUser: Record<string, Record<string, number>>;
 }
 
 interface ClientVoteSession extends Omit<VoteSessionRecord, 'candidates'> {
@@ -67,9 +69,16 @@ interface CreateSessionRequest {
   defenderPhotoKey?: string;
 }
 
+interface AddCandidateRequest {
+  photoKey?: string;
+  userId?: string;
+  displayName?: string;
+}
+
 interface VoteRequest {
   userId?: string;
   candidateId?: string;
+  rating?: number;
 }
 
 interface VoteParticipantEvent {
@@ -78,6 +87,8 @@ interface VoteParticipantEvent {
   territoryId: string;
   userId: string;
   candidateId: string;
+  candidateUserId: string;
+  rating: number;
   timestamp: string;
 }
 
@@ -91,13 +102,10 @@ const minio = new MinioClient({
 });
 
 const io = new Server(httpServer, {
-  cors: {
-    origin: '*',
-  },
+  cors: { origin: '*' },
   path: '/ws/vote',
 });
 
-const sessionTimeouts = new Map<string, NodeJS.Timeout>();
 let amqpChannel: Channel | null = null;
 
 app.use(helmet());
@@ -107,6 +115,8 @@ app.use(express.json());
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: SERVICE_NAME });
 });
+
+// ── Upload URL ────────────────────────────────────────────────────────────────
 
 app.post('/api/vote/votes/upload-url', async (req, res) => {
   const { fileName, contentType }: UploadUrlRequest = req.body ?? {};
@@ -120,19 +130,34 @@ app.post('/api/vote/votes/upload-url', async (req, res) => {
 
   try {
     const uploadUrl = await minio.presignedPutObject(MINIO_BUCKET_PHOTOS, photoKey, 60 * 10);
-
-    return res.status(200).json({
-      bucket: MINIO_BUCKET_PHOTOS,
-      photoKey,
-      uploadUrl,
-      expiresInSeconds: 600,
-      contentType,
-    });
+    return res.status(200).json({ bucket: MINIO_BUCKET_PHOTOS, photoKey, uploadUrl, expiresInSeconds: 600, contentType });
   } catch (error) {
     console.error('[vote-service] failed to generate upload URL', error);
     return res.status(500).json({ message: 'Failed to generate upload URL.' });
   }
 });
+
+// ── Photo URL (presigned read) ────────────────────────────────────────────────
+
+app.get('/api/vote/votes/photo-url', async (req, res) => {
+  const photoKey = req.query['key'];
+  if (typeof photoKey !== 'string' || !photoKey) {
+    return res.status(400).json({ message: 'key query param required.' });
+  }
+
+  if (photoKey.startsWith('seed/')) {
+    return res.json({ url: buildFallbackImageDataUrl(photoKey) });
+  }
+
+  try {
+    const url = await minio.presignedGetObject(MINIO_BUCKET_PHOTOS, photoKey, 60 * 60);
+    return res.json({ url });
+  } catch {
+    return res.json({ url: buildFallbackImageDataUrl(photoKey) });
+  }
+});
+
+// ── Create session ────────────────────────────────────────────────────────────
 
 app.post('/api/vote/votes/sessions', async (req, res) => {
   const {
@@ -151,6 +176,30 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
 
   const now = Date.now();
   const sessionId = crypto.randomUUID();
+  const farFuture = new Date(now + 365 * 24 * 60 * 60 * 1000).toISOString();
+
+  const candidates: VoteCandidate[] = [
+    {
+      id: `challenger-${sessionId}`,
+      userId: challengerId ?? 'demo-user',
+      displayName: challengerName ?? 'Cupcake Crusher',
+      photoKey,
+      votes: 0,
+      totalRating: 0,
+    },
+  ];
+
+  if (defenderId && defenderPhotoKey) {
+    candidates.push({
+      id: `defender-${sessionId}`,
+      userId: defenderId,
+      displayName: defenderName ?? 'Donut Defender',
+      photoKey: defenderPhotoKey,
+      votes: 0,
+      totalRating: 0,
+    });
+  }
+
   const session: VoteSessionRecord = {
     id: sessionId,
     territoryId,
@@ -158,31 +207,17 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
     createdBy: challengerId ?? 'demo-user',
     createdAt: new Date(now).toISOString(),
     startedAt: new Date(now).toISOString(),
-    endsAt: new Date(now + SESSION_DURATION_MS).toISOString(),
+    endsAt: farFuture,
     completedAt: null,
     winnerId: null,
     winnerPhotoKey: null,
-    candidates: [
-      {
-        id: `challenger-${sessionId}`,
-        userId: challengerId ?? 'demo-user',
-        displayName: challengerName ?? 'Cupcake Crusher',
-        photoKey,
-        votes: 0,
-      },
-      {
-        id: `defender-${sessionId}`,
-        userId: defenderId ?? 'house-defender',
-        displayName: defenderName ?? 'Donut Defender',
-        photoKey: defenderPhotoKey ?? 'seed/default-defender-donut.png',
-        votes: 0,
-      },
-    ],
+    candidates,
     votesByUser: {},
+    ratingByUser: {},
   };
 
   await saveSession(session);
-  scheduleFinalization(session);
+  await redis.set(`${VOTE_REDIS_PREFIX}:territory:active:${territoryId}`, sessionId, 'EX', SESSION_TTL_SECONDS);
   void emitSessionUpdate(session);
 
   return res.status(201).json({
@@ -191,57 +226,85 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
   });
 });
 
-app.get('/api/vote/votes/sessions/:sessionId', async (req, res) => {
-  const session = await loadSession(req.params.sessionId);
+// ── Add candidate to existing session ────────────────────────────────────────
 
-  if (!session) {
-    return res.status(404).json({ message: 'Voting session not found.' });
+app.post('/api/vote/votes/sessions/:sessionId/candidates', async (req, res) => {
+  const { photoKey, userId, displayName }: AddCandidateRequest = req.body ?? {};
+
+  if (!photoKey || !userId) {
+    return res.status(400).json({ message: 'photoKey and userId are required.' });
   }
+
+  const session = await loadSession(req.params['sessionId']!);
+  if (!session) return res.status(404).json({ message: 'Session not found.' });
+  if (session.status !== 'active') return res.status(409).json({ message: 'Session is no longer active.' });
+
+  const alreadyIn = session.candidates.some((c) => c.userId === userId);
+  if (alreadyIn) {
+    return res.status(409).json({ message: 'You already have a dish in this session.', session: await serializeSession(session) });
+  }
+
+  const candidateId = `candidate-${userId}-${Date.now()}`;
+  session.candidates.push({ id: candidateId, userId, displayName: displayName ?? 'Mystery Foodie', photoKey, votes: 0, totalRating: 0 });
+  await saveSession(session);
+  void emitSessionUpdate(session);
 
   return res.status(200).json({ session: await serializeSession(session) });
 });
 
+// ── Get session by territory ──────────────────────────────────────────────────
+
+app.get('/api/vote/votes/sessions/by-territory/:territoryId', async (req, res) => {
+  const { territoryId } = req.params;
+  const sessionId = await redis.get(`${VOTE_REDIS_PREFIX}:territory:active:${territoryId}`);
+  if (!sessionId) return res.status(404).json({ message: 'No active session for this territory.' });
+
+  const session = await loadSession(sessionId);
+  if (!session || session.status !== 'active') {
+    await redis.del(`${VOTE_REDIS_PREFIX}:territory:active:${territoryId}`);
+    return res.status(404).json({ message: 'No active session for this territory.' });
+  }
+  return res.status(200).json({ session: await serializeSession(session) });
+});
+
+// ── Get session by id ─────────────────────────────────────────────────────────
+
+app.get('/api/vote/votes/sessions/:sessionId', async (req, res) => {
+  const session = await loadSession(req.params['sessionId']!);
+  if (!session) return res.status(404).json({ message: 'Voting session not found.' });
+  return res.status(200).json({ session: await serializeSession(session) });
+});
+
+// ── Submit vote ───────────────────────────────────────────────────────────────
+
 app.post('/api/vote/votes/sessions/:sessionId/vote', async (req, res) => {
-  const { userId, candidateId }: VoteRequest = req.body ?? {};
+  const { userId, candidateId, rating }: VoteRequest = req.body ?? {};
 
   if (!userId || !candidateId) {
     return res.status(400).json({ message: 'userId and candidateId are required.' });
   }
 
-  const session = await loadSession(req.params.sessionId);
+  const ratingValue = typeof rating === 'number'
+    ? Math.min(10, Math.max(1, Math.round(rating)))
+    : 5;
 
-  if (!session) {
-    return res.status(404).json({ message: 'Voting session not found.' });
-  }
+  const session = await loadSession(req.params['sessionId']!);
+  if (!session) return res.status(404).json({ message: 'Voting session not found.' });
+  if (session.status !== 'active') return res.status(409).json({ message: 'Voting session is no longer active.' });
 
-  if (session.status !== 'active') {
-    return res.status(409).json({ message: 'Voting session is no longer active.' });
-  }
-
-  if (new Date(session.endsAt).getTime() <= Date.now()) {
-    await finalizeSession(session.id);
-    const freshSession = await loadSession(session.id);
-    return res.status(409).json({
-      message: 'Voting session has ended.',
-      session: freshSession ? await serializeSession(freshSession) : null,
-    });
-  }
-
-  if (session.votesByUser[userId]) {
-    return res.status(409).json({
-      message: 'This user has already voted in the session.',
-      session: await serializeSession(session),
-    });
+  const alreadyRated: string[] = session.votesByUser[userId] ?? [];
+  if (alreadyRated.includes(candidateId)) {
+    return res.status(409).json({ message: 'You already rated this dish.', session: await serializeSession(session) });
   }
 
   const candidate = session.candidates.find((entry) => entry.id === candidateId);
-
-  if (!candidate) {
-    return res.status(400).json({ message: 'Candidate not found in session.' });
-  }
+  if (!candidate) return res.status(400).json({ message: 'Candidate not found in session.' });
 
   candidate.votes += 1;
-  session.votesByUser[userId] = candidateId;
+  candidate.totalRating += ratingValue;
+  session.votesByUser[userId] = [...alreadyRated, candidateId];
+  session.ratingByUser = session.ratingByUser ?? {};
+  session.ratingByUser[userId] = { ...(session.ratingByUser[userId] ?? {}), [candidateId]: ratingValue };
   await saveSession(session);
 
   const participantEvent: VoteParticipantEvent = {
@@ -250,56 +313,66 @@ app.post('/api/vote/votes/sessions/:sessionId/vote', async (req, res) => {
     territoryId: session.territoryId,
     userId,
     candidateId,
+    candidateUserId: candidate.userId,
+    rating: ratingValue,
     timestamp: new Date().toISOString(),
   };
 
   await publishEvent('vote.participant', participantEvent);
   void emitSessionUpdate(session);
 
+  // Auto-finalize when every candidate has at least 3 votes
+  const MIN_VOTES = 3;
+  if (session.candidates.every((c) => c.votes >= MIN_VOTES)) {
+    void finalizeSession(session.id);
+  }
+
   return res.status(200).json({ session: await serializeSession(session) });
 });
+
+// ── Manual finalize ───────────────────────────────────────────────────────────
+
+app.post('/api/vote/votes/sessions/:sessionId/finalize', async (req, res) => {
+  const session = await loadSession(req.params['sessionId']!);
+  if (!session) return res.status(404).json({ message: 'Session not found.' });
+  if (session.status !== 'active') return res.status(409).json({ message: 'Session already ended.' });
+
+  const totalVotes = session.candidates.reduce((sum, c) => sum + c.votes, 0);
+  if (totalVotes === 0) return res.status(409).json({ message: 'No votes yet — cast at least one vote first.' });
+
+  await finalizeSession(session.id);
+  const updated = await loadSession(session.id);
+  return res.status(200).json({ session: updated ? await serializeSession(updated) : null });
+});
+
+// ── Socket.io ─────────────────────────────────────────────────────────────────
 
 io.on('connection', (socket) => {
   const rawSessionId = socket.handshake.query['sessionId'];
   const sessionId = Array.isArray(rawSessionId) ? rawSessionId[0] : rawSessionId;
 
-  if (sessionId) {
-    socket.join(getRoomName(sessionId));
-  }
+  if (sessionId) socket.join(getRoomName(sessionId));
 
   socket.on('join-session', async (requestedSessionId: string) => {
     socket.join(getRoomName(requestedSessionId));
     const session = await loadSession(requestedSessionId);
-
-    if (session) {
-      socket.emit('session:update', await serializeSession(session));
-    }
+    if (session) socket.emit('session:update', await serializeSession(session));
   });
 });
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 async function bootstrap(): Promise<void> {
   const amqpConnection = await createAmqpConnection();
   amqpChannel = amqpConnection.channel;
-
   await ensureMinioBucket();
-  await restoreActiveSessions();
 }
 
-function getRoomName(sessionId: string): string {
-  return `vote-session:${sessionId}`;
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getSessionKey(sessionId: string): string {
-  return `${VOTE_REDIS_PREFIX}:session:${sessionId}`;
-}
-
-function getActiveSessionsKey(): string {
-  return `${VOTE_REDIS_PREFIX}:sessions:active`;
-}
-
-function getFinalizeLockKey(sessionId: string): string {
-  return `${VOTE_REDIS_PREFIX}:lock:finalize:${sessionId}`;
-}
+function getRoomName(sessionId: string): string { return `vote-session:${sessionId}`; }
+function getSessionKey(sessionId: string): string { return `${VOTE_REDIS_PREFIX}:session:${sessionId}`; }
+function getActiveSessionsKey(): string { return `${VOTE_REDIS_PREFIX}:sessions:active`; }
 
 function getFileExtension(fileName: string): string {
   const lastDot = fileName.lastIndexOf('.');
@@ -308,7 +381,6 @@ function getFileExtension(fileName: string): string {
 
 async function ensureMinioBucket(): Promise<void> {
   const exists = await minio.bucketExists(MINIO_BUCKET_PHOTOS);
-
   if (!exists) {
     await minio.makeBucket(MINIO_BUCKET_PHOTOS);
     console.info(`[${SERVICE_NAME}] created MinIO bucket ${MINIO_BUCKET_PHOTOS}`);
@@ -328,75 +400,70 @@ async function serializeSession(session: VoteSessionRecord): Promise<ClientVoteS
 }
 
 async function resolveCandidatePhotoUrl(candidate: VoteCandidate): Promise<string> {
-  if (candidate.photoKey.startsWith('seed/')) {
-    return buildFallbackImageDataUrl(candidate.displayName);
-  }
-
+  if (candidate.photoKey.startsWith('seed/')) return buildFallbackImageDataUrl(candidate.displayName);
   try {
     return await minio.presignedGetObject(MINIO_BUCKET_PHOTOS, candidate.photoKey, 60 * 60);
-  } catch (error) {
-    console.warn(
-      `[${SERVICE_NAME}] failed to create read URL for ${candidate.photoKey}, using fallback`,
-      error
-    );
+  } catch {
     return buildFallbackImageDataUrl(candidate.displayName);
   }
 }
 
 function buildFallbackImageDataUrl(label: string): string {
   const safeLabel = escapeXml(label);
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
-      <defs>
-        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#ffd682" />
-          <stop offset="100%" stop-color="#f6a4bc" />
-        </linearGradient>
-      </defs>
-      <rect width="640" height="480" rx="36" fill="url(#bg)" />
-      <circle cx="140" cy="120" r="44" fill="#fff4d3" opacity="0.65" />
-      <circle cx="520" cy="340" r="58" fill="#fff4d3" opacity="0.45" />
-      <text x="320" y="228" text-anchor="middle" font-size="34" font-family="Trebuchet MS, sans-serif" fill="#5c3759">
-        ${safeLabel}
-      </text>
-      <text x="320" y="278" text-anchor="middle" font-size="18" font-family="Trebuchet MS, sans-serif" fill="#8e5372">
-        Waiting for dish photo
-      </text>
-    </svg>
-  `.trim();
-
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480"><defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd682"/><stop offset="100%" stop-color="#f6a4bc"/></linearGradient></defs><rect width="640" height="480" rx="36" fill="url(#bg)"/><circle cx="140" cy="120" r="44" fill="#fff4d3" opacity="0.65"/><circle cx="520" cy="340" r="58" fill="#fff4d3" opacity="0.45"/><text x="320" y="228" text-anchor="middle" font-size="34" font-family="Trebuchet MS, sans-serif" fill="#5c3759">${safeLabel}</text><text x="320" y="278" text-anchor="middle" font-size="18" font-family="Trebuchet MS, sans-serif" fill="#8e5372">Waiting for dish photo</text></svg>`.trim();
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 function escapeXml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
 }
 
-async function restoreActiveSessions(): Promise<void> {
-  const sessionIds = await redis.smembers(getActiveSessionsKey());
+function getFinalizeLockKey(sessionId: string): string {
+  return `${VOTE_REDIS_PREFIX}:lock:finalize:${sessionId}`;
+}
 
-  await Promise.all(
-    sessionIds.map(async (sessionId) => {
-      const session = await loadSession(sessionId);
+async function finalizeSession(sessionId: string): Promise<void> {
+  const lockResult = await redis.set(getFinalizeLockKey(sessionId), '1', 'EX', 60, 'NX');
+  if (lockResult !== 'OK') return;
 
-      if (!session) {
-        await redis.srem(getActiveSessionsKey(), sessionId);
-        return;
-      }
+  const session = await loadSession(sessionId);
+  if (!session || session.status !== 'active') return;
 
-      if (session.status !== 'active') {
-        await redis.srem(getActiveSessionsKey(), sessionId);
-        return;
-      }
+  const winner = pickWinner(session.candidates);
+  session.status = 'completed';
+  session.completedAt = new Date().toISOString();
+  session.winnerId = winner.userId;
+  session.winnerPhotoKey = winner.photoKey;
+  await saveSession(session);
+  void emitSessionUpdate(session);
 
-      scheduleFinalization(session);
-    })
-  );
+  await redis.del(`${VOTE_REDIS_PREFIX}:territory:active:${session.territoryId}`);
+
+  const winnerEvent: VoteWinnerDeclaredEvent = {
+    eventType: 'vote.winner_declared',
+    sessionId: session.id,
+    territoryId: session.territoryId,
+    winnerId: winner.userId,
+    winnerName: winner.displayName,
+    winnerPhotoKey: winner.photoKey,
+    timestamp: session.completedAt,
+    candidates: session.candidates.map((c) => ({
+      userId: c.userId,
+      photoKey: c.photoKey,
+      votes: c.votes,
+      totalRating: c.totalRating,
+      avgRating: c.votes > 0 ? Math.round((c.totalRating / c.votes) * 10) / 10 : 0,
+    })),
+  };
+
+  await publishEvent('vote.winner_declared', winnerEvent);
+  console.info(`[${SERVICE_NAME}] session ${sessionId} finalized — winner: ${winner.userId}`);
+}
+
+function pickWinner(candidates: VoteCandidate[]): VoteCandidate {
+  const highestRating = Math.max(...candidates.map((c) => c.totalRating));
+  const tied = candidates.filter((c) => c.totalRating === highestRating);
+  return tied[Math.floor(Math.random() * tied.length)]!;
 }
 
 async function loadSession(sessionId: string): Promise<VoteSessionRecord | null> {
@@ -406,7 +473,6 @@ async function loadSession(sessionId: string): Promise<VoteSessionRecord | null>
 
 async function saveSession(session: VoteSessionRecord): Promise<void> {
   await redis.set(getSessionKey(session.id), JSON.stringify(session), 'EX', SESSION_TTL_SECONDS);
-
   if (session.status === 'active') {
     await redis.sadd(getActiveSessionsKey(), session.id);
   } else {
@@ -414,70 +480,11 @@ async function saveSession(session: VoteSessionRecord): Promise<void> {
   }
 }
 
-function scheduleFinalization(session: VoteSessionRecord): void {
-  const existingTimeout = sessionTimeouts.get(session.id);
-
-  if (existingTimeout) {
-    clearTimeout(existingTimeout);
-  }
-
-  const msUntilEnd = Math.max(new Date(session.endsAt).getTime() - Date.now(), 0);
-  const timeout = setTimeout(() => {
-    void finalizeSession(session.id);
-  }, msUntilEnd);
-
-  sessionTimeouts.set(session.id, timeout);
-}
-
-async function finalizeSession(sessionId: string): Promise<void> {
-  const lockResult = await redis.set(getFinalizeLockKey(sessionId), '1', 'EX', 60, 'NX');
-
-  if (lockResult !== 'OK') {
-    return;
-  }
-
-  const session = await loadSession(sessionId);
-
-  if (!session || session.status !== 'active') {
-    return;
-  }
-
-  const winner = pickWinner(session.candidates);
-  session.status = 'completed';
-  session.completedAt = new Date().toISOString();
-  session.winnerId = winner.userId;
-  session.winnerPhotoKey = winner.photoKey;
-  await saveSession(session);
-  void emitSessionUpdate(session);
-  void emitWinnerAnnouncement(session);
-
-  const winnerEvent: VoteWinnerDeclaredEvent = {
-    eventType: 'vote.winner_declared',
-    sessionId: session.id,
-    territoryId: session.territoryId,
-    winnerId: winner.userId,
-    winnerPhotoKey: winner.photoKey,
-    timestamp: session.completedAt,
-  };
-
-  await publishEvent('vote.winner_declared', winnerEvent);
-}
-
-function pickWinner(candidates: VoteCandidate[]): VoteCandidate {
-  const highestVoteCount = Math.max(...candidates.map((candidate) => candidate.votes));
-  const tiedCandidates = candidates.filter((candidate) => candidate.votes === highestVoteCount);
-  return tiedCandidates[Math.floor(Math.random() * tiedCandidates.length)];
-}
-
-async function publishEvent(
-  routingKey: string,
-  payload: VoteWinnerDeclaredEvent | VoteParticipantEvent
-) {
+async function publishEvent(routingKey: string, payload: VoteWinnerDeclaredEvent | VoteParticipantEvent) {
   if (!amqpChannel) {
     console.warn(`[${SERVICE_NAME}] AMQP channel unavailable, skipping publish for ${routingKey}`);
     return;
   }
-
   amqpChannel.publish(RABBITMQ_EXCHANGE, routingKey, Buffer.from(JSON.stringify(payload)), {
     contentType: 'application/json',
     persistent: true,
@@ -486,21 +493,6 @@ async function publishEvent(
 
 async function emitSessionUpdate(session: VoteSessionRecord): Promise<void> {
   io.to(getRoomName(session.id)).emit('session:update', await serializeSession(session));
-}
-
-async function emitWinnerAnnouncement(session: VoteSessionRecord): Promise<void> {
-  const winner = session.candidates.find((candidate) => candidate.userId === session.winnerId);
-  io.to(getRoomName(session.id)).emit('session:completed', {
-    sessionId: session.id,
-    territoryId: session.territoryId,
-    winner: winner
-      ? {
-          ...winner,
-          photoUrl: await resolveCandidatePhotoUrl(winner),
-        }
-      : null,
-    completedAt: session.completedAt,
-  });
 }
 
 void bootstrap()

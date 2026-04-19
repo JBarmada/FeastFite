@@ -255,6 +255,25 @@ authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
   res.json(toUserPayload(row));
 });
 
+// ── GET /users/lookup?ids=id1,id2,... ────────────────────────────────────────
+
+authRouter.get('/users/lookup', async (req: Request, res: Response) => {
+  const raw = req.query['ids'];
+  const ids = (typeof raw === 'string' ? raw : '').split(',').map((s) => s.trim()).filter(Boolean);
+
+  if (ids.length === 0) {
+    res.json({ users: [] });
+    return;
+  }
+
+  const result = await db.query<{ id: string; username: string }>(
+    `SELECT id, username FROM users WHERE id = ANY($1::uuid[])`,
+    [ids],
+  );
+
+  res.json({ users: result.rows.map((r) => ({ id: r.id, username: r.username })) });
+});
+
 // ── POST /forgot-password (stub) ──────────────────────────────────
 
 authRouter.post('/forgot-password', async (req: Request, res: Response) => {

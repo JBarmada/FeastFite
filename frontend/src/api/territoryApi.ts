@@ -25,6 +25,34 @@ export interface BatteringRamResult {
   itemUsed?: string;
 }
 
+export interface MySubmission {
+  id: string;
+  territoryId: string;
+  territoryName: string;
+  claimantId: string;
+  claimantName: string;
+  photoKey: string | null;
+  isWinner: boolean;
+  avgRating: number | null;
+  voteCount: number;
+  totalRating: number;
+  sessionId: string | null;
+  claimedAt: string;
+}
+
+export interface ClaimHistoryEntry {
+  id: string;
+  claimantId: string;
+  claimantName: string;
+  photoKey: string | null;
+  isWinner: boolean;
+  avgRating: number | null;
+  voteCount: number;
+  totalRating: number;
+  sessionId: string | null;
+  claimedAt: string;
+}
+
 export const territoryApi = {
   /** Fetch all territories whose polygon intersects the given bounding box */
   async getByBbox(bbox: BBox): Promise<Territory[]> {
@@ -39,14 +67,42 @@ export const territoryApi = {
     return data;
   },
 
-  /** Claim a territory — starts a vote session if already owned, direct claim if uncontested */
-  async claim(id: string, token: string): Promise<ClaimResult> {
+  /** Claim a territory — direct claim if uncontested, starts vote session if already owned */
+  async claim(
+    id: string,
+    token: string,
+    body?: { photoKey?: string; displayName?: string },
+  ): Promise<ClaimResult> {
     const { data } = await client.post<ClaimResult>(
       `/territories/${id}/claim`,
-      {},
+      body ?? {},
       { headers: authHeader(token) },
     );
     return data;
+  },
+
+  /** Photo submission history for a territory */
+  async getHistory(id: string): Promise<ClaimHistoryEntry[]> {
+    const { data } = await client.get<{ history: ClaimHistoryEntry[] }>(
+      `/territories/${id}/history`,
+    );
+    return data.history;
+  },
+
+  /** Territories owned by the current user (requires auth token) */
+  async getOwned(token: string): Promise<Territory[]> {
+    const { data } = await client.get<Territory[]>('/territories/owned', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  },
+
+  /** All submissions by the current user across all territories */
+  async getMySubmissions(token: string): Promise<MySubmission[]> {
+    const { data } = await client.get<{ submissions: MySubmission[] }>('/territories/my-history', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data.submissions ?? [];
   },
 
   /** Use a Battering Ram from inventory (buy in shop first) to break a lock */

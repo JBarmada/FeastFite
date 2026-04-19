@@ -16,10 +16,10 @@ function polygonStyle(territory: Territory, isSelected: boolean): PathOptions {
 
   return {
     fillColor: fill,
-    fillOpacity: isSelected ? 0.82 : 0.58,
-    color: '#5B0EA6',          // dark purple border
-    weight: isSelected ? 3 : 2,
-    dashArray: '6 4',          // always dotted
+    fillOpacity: isSelected ? 0.88 : 0.58,
+    color: isSelected ? '#1A0040' : '#5B0EA6',
+    weight: isSelected ? 4 : 2,
+    dashArray: isSelected ? undefined : '6 4',
   };
 }
 
@@ -29,9 +29,10 @@ function polygonStyle(territory: Territory, isSelected: boolean): PathOptions {
 
 interface LoaderProps {
   onLoad: (territories: Territory[]) => void;
+  refreshKey?: number;
 }
 
-function BBoxLoader({ onLoad }: LoaderProps) {
+function BBoxLoader({ onLoad, refreshKey }: LoaderProps) {
   const map = useMap();
 
   const load = useCallback(async () => {
@@ -51,20 +52,24 @@ function BBoxLoader({ onLoad }: LoaderProps) {
     return () => { map.off('moveend', load); };
   }, [map, load]);
 
+  // Force reload when parent increments refreshKey (e.g. after a claim)
+  useEffect(() => {
+    if (refreshKey !== undefined) void load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+
   return null;
 }
 
 // ── MapView ───────────────────────────────────────────────────────────────────
 
 interface MapViewProps {
-  /**
-   * Dev C provides this handler to trigger the photo-upload claim flow.
-   * Dev B only renders the button and fires this callback.
-   */
   onClaim: (territory: Territory) => void;
+  /** Increment to force a territory reload (e.g. after a claim or vote win) */
+  refreshKey?: number;
 }
 
-export function MapView({ onClaim }: MapViewProps) {
+export function MapView({ onClaim, refreshKey }: MapViewProps) {
   const [territories, setTerritories] = useState<Territory[]>([]);
   const [selected, setSelected] = useState<Territory | null>(null);
 
@@ -88,12 +93,12 @@ export function MapView({ onClaim }: MapViewProps) {
           maxZoom={21}
         />
 
-        <BBoxLoader onLoad={setTerritories} />
+        <BBoxLoader onLoad={setTerritories} refreshKey={refreshKey} />
 
         {territories.map((territory) => (
           <GeoJSON
-            // Key includes updatedAt so the layer re-renders on ownership change
-            key={`${territory.id}-${String(territory.updatedAt)}`}
+            // Key includes updatedAt + selection state so Leaflet re-renders style correctly
+            key={`${territory.id}-${String(territory.updatedAt)}-${selected?.id === territory.id}`}
             data={territory.geoJson as Feature}
             style={() => polygonStyle(territory, selected?.id === territory.id)}
             onEachFeature={(_feature: Feature, layer: Layer) => {
@@ -120,7 +125,7 @@ export function MapView({ onClaim }: MapViewProps) {
         territory={selected}
         onClose={() => setSelected(null)}
         onClaim={onClaim}
-        // ownerName / ownerAvatarUrl resolved by parent via profile-service when needed
+        ownerName={selected?.ownerName ?? undefined}
       />
     </div>
   );

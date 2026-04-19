@@ -14,6 +14,7 @@ export interface Territory {
   name: string;
   geoJson: Feature;
   ownerId: string | null;
+  ownerName: string | null;
   ownerType: 'user' | 'clan' | null;
   capturedAt: Date | null;
   lockedUntil: Date | null;
@@ -67,16 +68,27 @@ export interface VoteWinnerDeclaredEvent {
   sessionId: string;
   territoryId: string;
   winnerId: string;
+  winnerName?: string;
   winnerPhotoKey: string;
   timestamp: string;
+  /** Per-candidate final stats (votes + ratings) for persisting to history */
+  candidates?: Array<{
+    userId: string;
+    photoKey: string;
+    votes: number;
+    totalRating: number;
+    avgRating: number;
+  }>;
 }
 
 export interface VoteParticipantEvent {
   eventType: 'vote.participant';
   sessionId: string;
   territoryId: string;
-  userId: string;
+  userId: string;          // user who cast the vote
   candidateId: string;
+  candidateUserId: string; // user whose dish was rated
+  rating: number;          // rating given (1-10)
   timestamp: string;
 }
 

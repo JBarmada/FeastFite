@@ -45,6 +45,7 @@ function rowToTerritory(row: Record<string, unknown>) {
     name:          row['name'],
     geoJson:       row['geojson'],
     ownerId:       row['owner_id']       ?? null,
+    ownerName:     row['owner_name']     ?? null,
     ownerType:     row['owner_type']     ?? null,
     capturedAt:    row['captured_at']    ?? null,
     lockedUntil:   row['locked_until']   ?? null,
@@ -71,7 +72,7 @@ territoriesRouter.get('/', async (req: Request, res: Response) => {
   const [minLng, minLat, maxLng, maxLat] = parts;
 
   const { rows } = await pool.query(
-    `SELECT id, name, geojson, owner_id, owner_type,
+    `SELECT id, name, geojson, owner_id, owner_name, owner_type,
             captured_at, locked_until, dish_photo_key, updated_at
      FROM territories
      WHERE ST_Intersects(
@@ -84,11 +85,59 @@ territoriesRouter.get('/', async (req: Request, res: Response) => {
   res.json(rows.map(rowToTerritory));
 });
 
+// ── GET /territories/owned ────────────────────────────────────────────────────
+// Must be registered before /:id to avoid "owned" being treated as an id.
+
+territoriesRouter.get('/owned', requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as Request & { userId: string }).userId;
+  const { rows } = await pool.query(
+    `SELECT id, name, geojson, owner_id, owner_name, owner_type,
+            captured_at, locked_until, dish_photo_key, updated_at
+     FROM territories WHERE owner_id = $1`,
+    [userId],
+  );
+  res.json(rows.map(rowToTerritory));
+});
+
+// ── GET /territories/my-history ──────────────────────────────────────────────
+// Must be registered before /:id to avoid "my-history" being treated as an id.
+
+territoriesRouter.get('/my-history', requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as Request & { userId: string }).userId;
+  const { rows } = await pool.query(
+    `SELECT ch.id, ch.territory_id, t.name AS territory_name,
+            ch.claimant_id, ch.claimant_name, ch.photo_key, ch.is_winner,
+            ch.avg_rating, ch.vote_count, ch.total_rating, ch.session_id, ch.claimed_at
+     FROM claim_history ch
+     JOIN territories t ON t.id = ch.territory_id
+     WHERE ch.claimant_id = $1
+     ORDER BY ch.claimed_at DESC`,
+    [userId],
+  );
+
+  res.json({
+    submissions: rows.map((r) => ({
+      id:            r['id'],
+      territoryId:   r['territory_id'],
+      territoryName: r['territory_name'],
+      claimantId:    r['claimant_id'],
+      claimantName:  r['claimant_name'],
+      photoKey:      r['photo_key'],
+      isWinner:      r['is_winner'],
+      avgRating:     r['avg_rating'] ? Number(r['avg_rating']) : null,
+      voteCount:     Number(r['vote_count'] ?? 0),
+      totalRating:   Number(r['total_rating'] ?? 0),
+      sessionId:     r['session_id'],
+      claimedAt:     r['claimed_at'],
+    })),
+  });
+});
+
 // ── GET /territories/:id ──────────────────────────────────────────────────────
 
 territoriesRouter.get('/:id', async (req: Request, res: Response) => {
   const { rows } = await pool.query(
-    `SELECT id, name, geojson, owner_id, owner_type,
+    `SELECT id, name, geojson, owner_id, owner_name, owner_type,
             captured_at, locked_until, dish_photo_key, updated_at
      FROM territories WHERE id = $1`,
     [req.params['id']],
@@ -104,13 +153,14 @@ territoriesRouter.get('/:id', async (req: Request, res: Response) => {
 
 // ── POST /territories/:id/claim ───────────────────────────────────────────────
 // Uncontested → commit ownership directly.
-// Contested    → delegate to vote-service.
+// Contested    → join existing active session or start a new one.
 
 territoriesRouter.post('/:id/claim', requireAuth, async (req: Request, res: Response) => {
   const userId = (req as Request & { userId: string }).userId;
+  const { photoKey, displayName } = (req.body ?? {}) as { photoKey?: string; displayName?: string };
 
   const { rows } = await pool.query(
-    `SELECT id, owner_id, locked_until FROM territories WHERE id = $1`,
+    `SELECT id, owner_id, owner_name FROM territories WHERE id = $1`,
     [req.params['id']],
   );
 
@@ -119,39 +169,106 @@ territoriesRouter.post('/:id/claim', requireAuth, async (req: Request, res: Resp
     return;
   }
 
-  const territory = rows[0] as { id: string; owner_id: string | null; locked_until: string | null };
-  const isLocked = territory.locked_until && new Date(territory.locked_until) > new Date();
+  const territory = rows[0] as { id: string; owner_id: string | null; owner_name: string | null };
 
-  if (isLocked) {
-    res.status(409).json({ error: 'Territory is locked — use a Battering Ram to break it' });
-    return;
-  }
-
-  // Uncontested claim
+  // Uncontested claim — save dish photo and owner immediately
   if (!territory.owner_id) {
     await pool.query(
       `UPDATE territories
-          SET owner_id = $1, owner_type = 'user',
-              captured_at = NOW(), locked_until = NOW() + INTERVAL '1 hour',
+          SET owner_id = $1, owner_name = $4, owner_type = 'user',
+              captured_at = NOW(), locked_until = NULL,
+              dish_photo_key = COALESCE($3, dish_photo_key),
               updated_at = NOW()
         WHERE id = $2`,
-      [userId, territory.id],
+      [userId, territory.id, photoKey ?? null, displayName ?? 'Unknown Foodie'],
+    );
+    await pool.query(
+      `INSERT INTO claim_history (territory_id, claimant_id, claimant_name, photo_key, is_winner)
+       VALUES ($1, $2, $3, $4, true)`,
+      [territory.id, userId, displayName ?? 'Unknown Foodie', photoKey ?? null],
     );
     res.json({ claimed: true });
     return;
   }
 
-  // Contested — kick off vote session
+  // Contested — check for an existing active session first
+  let sessionId: string;
   try {
-    const { data } = await axios.post<{ sessionId: string }>(
-      `${VOTE_SERVICE_URL}/api/vote/sessions`,
-      { territoryId: territory.id, challengerId: userId, defenderId: territory.owner_id },
-      { headers: { Authorization: req.headers.authorization } },
+    // Try to join the existing active session by adding this user as a candidate
+    const checkRes = await axios.get<{ session: { id: string } }>(
+      `${VOTE_SERVICE_URL}/api/vote/votes/sessions/by-territory/${territory.id}`,
     );
-    res.json({ claimed: false, voteSessionId: data.sessionId });
+    const existingSessionId = checkRes.data.session.id;
+
+    if (photoKey) {
+      await axios.post(
+        `${VOTE_SERVICE_URL}/api/vote/votes/sessions/${existingSessionId}/candidates`,
+        { photoKey, userId, displayName: displayName ?? 'Challenger' },
+      ).catch(() => {});
+    }
+    sessionId = existingSessionId;
   } catch {
-    res.status(502).json({ error: 'vote-service unavailable' });
+    // No active session — create one
+    try {
+      const { data } = await axios.post<{ session: { id: string } }>(
+        `${VOTE_SERVICE_URL}/api/vote/votes/sessions`,
+        {
+          territoryId: territory.id,
+          photoKey: photoKey ?? 'seed/default-defender-donut.png',
+          challengerId: userId,
+          challengerName: displayName ?? 'Challenger',
+          defenderId: territory.owner_id,
+          defenderName: territory.owner_name ?? 'Current Owner',
+        },
+      );
+      sessionId = data.session.id;
+    } catch {
+      res.status(502).json({ error: 'vote-service unavailable' });
+      return;
+    }
   }
+
+  if (photoKey) {
+    await pool.query(
+      `INSERT INTO claim_history (territory_id, claimant_id, claimant_name, photo_key, is_winner, session_id)
+       VALUES ($1, $2, $3, $4, false, $5)`,
+      [territory.id, userId, displayName ?? 'Challenger', photoKey ?? null, sessionId],
+    );
+  }
+
+  res.json({ claimed: false, voteSessionId: sessionId });
+});
+
+// ── GET /territories/:id/history ─────────────────────────────────────────────
+
+territoriesRouter.get('/:id/history', async (req: Request, res: Response) => {
+  const { rows } = await pool.query(
+    `SELECT id, claimant_id, claimant_name, photo_key, is_winner,
+            avg_rating, vote_count, total_rating, session_id, claimed_at
+     FROM claim_history
+     WHERE territory_id = $1
+     ORDER BY
+       CASE WHEN is_winner THEN 0 ELSE 1 END,
+       COALESCE(avg_rating, 0) DESC,
+       claimed_at DESC
+     LIMIT 50`,
+    [req.params['id']],
+  );
+
+  res.json({
+    history: rows.map((r) => ({
+      id:           r['id'],
+      claimantId:   r['claimant_id'],
+      claimantName: r['claimant_name'],
+      photoKey:     r['photo_key'],
+      isWinner:     r['is_winner'],
+      avgRating:    r['avg_rating'] ? Number(r['avg_rating']) : null,
+      voteCount:    Number(r['vote_count'] ?? 0),
+      totalRating:  Number(r['total_rating'] ?? 0),
+      sessionId:    r['session_id'],
+      claimedAt:    r['claimed_at'],
+    })),
+  });
 });
 
 // ── POST /territories/:id/battering-ram ───────────────────────────────────────

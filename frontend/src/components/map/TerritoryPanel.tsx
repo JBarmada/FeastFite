@@ -1,16 +1,15 @@
+import { useEffect, useState } from 'react';
 import type { Territory } from '@feastfite/shared';
 import { LockCountdown } from './LockCountdown';
 import { ClaimButton } from './ClaimButton';
 import { ownerColor } from '../../config/mapConfig';
+import { profileApi, type TerritoryLeaderboardEntry } from '../../api/profileApi';
 
 interface Props {
   territory: Territory | null;
   onClose: () => void;
-  /** Dev C hooks this to the upload/photo flow */
   onClaim: (territory: Territory) => void;
-  /** Resolved display name for the owner — pass from parent after profile lookup */
   ownerName?: string;
-  /** URL to the owner's food-monster avatar image */
   ownerAvatarUrl?: string;
 }
 
@@ -21,12 +20,33 @@ export function TerritoryPanel({
   ownerName,
   ownerAvatarUrl,
 }: Props) {
+  const [leaderboard, setLeaderboard] = useState<TerritoryLeaderboardEntry[]>([]);
+  const [usernameMap, setUsernameMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!territory) return;
+    setLeaderboard([]);
+    setUsernameMap({});
+    profileApi.getTerritoryLeaderboard(territory.id)
+      .then(async (entries) => {
+        setLeaderboard(entries);
+        const ids = entries.map((e) => e.userId).filter(Boolean);
+        if (ids.length > 0) {
+          const map = await profileApi.lookupUsernames(ids).catch(() => ({}));
+          setUsernameMap(map);
+        }
+      })
+      .catch(() => { /* non-fatal */ });
+  }, [territory?.id]);
+
   if (!territory) return null;
 
   const accentColor = ownerColor(territory.ownerId);
   const dishPhotoUrl = territory.dishPhotoKey
-    ? `/api/files/${territory.dishPhotoKey}` // proxied through Kong → MinIO
+    ? `/api/files/${territory.dishPhotoKey}`
     : null;
+
+  const displayOwnerName = ownerName ?? (territory.ownerName ?? (territory.ownerId ? 'Unknown Foodie' : null));
 
   return (
     <aside
@@ -45,7 +65,6 @@ export function TerritoryPanel({
         overflowY: 'auto',
       }}
     >
-      {/* Close */}
       <button
         onClick={onClose}
         aria-label="Close panel"
@@ -62,7 +81,6 @@ export function TerritoryPanel({
         ✕
       </button>
 
-      {/* Territory name */}
       <h2
         style={{
           margin: '4px 16px 12px',
@@ -75,16 +93,12 @@ export function TerritoryPanel({
         {territory.name}
       </h2>
 
-      {/* Dish photo */}
       {dishPhotoUrl ? (
         <img
           src={dishPhotoUrl}
-          alt={`Dish representing ${territory.name}`}
-          style={{
-            width: '100%',
-            height: '150px',
-            objectFit: 'cover',
-          }}
+          alt={`Dish at ${territory.name}`}
+          style={{ width: '100%', height: '150px', objectFit: 'cover' }}
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
       ) : (
         <div
@@ -116,7 +130,6 @@ export function TerritoryPanel({
           borderBottom: '1px solid #F0E8FF',
         }}
       >
-        {/* Food-monster avatar */}
         <div
           style={{
             width: '44px',
@@ -135,7 +148,7 @@ export function TerritoryPanel({
           {ownerAvatarUrl ? (
             <img
               src={ownerAvatarUrl}
-              alt={ownerName ?? 'Owner'}
+              alt={displayOwnerName ?? 'Owner'}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           ) : (
@@ -148,12 +161,12 @@ export function TerritoryPanel({
             Owner
           </span>
           <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#2D1B4E' }}>
-            {ownerName ?? (territory.ownerId ? 'Unknown Foodie' : 'Unclaimed')}
+            {displayOwnerName ?? 'Unclaimed'}
           </span>
         </div>
       </div>
 
-      {/* Lock status */}
+      {/* Status */}
       <div
         style={{
           padding: '12px 16px',
@@ -164,12 +177,46 @@ export function TerritoryPanel({
         }}
       >
         <span style={{ fontSize: '0.8rem', color: '#777', fontWeight: 600 }}>Status</span>
-        <LockCountdown lockedUntil={territory.lockedUntil} />
+        <LockCountdown lockedUntil={territory.lockedUntil} ownerId={territory.ownerId} />
       </div>
 
       {/* Claim CTA */}
       <div style={{ padding: '16px' }}>
         <ClaimButton territory={territory} onClaim={onClaim} />
+      </div>
+
+      {/* Territory leaderboard */}
+      <div style={{ padding: '12px 16px 20px', borderTop: '1px solid #F0E8FF' }}>
+        <div style={{ fontSize: '0.72rem', color: '#999', fontWeight: 700, textTransform: 'uppercase', marginBottom: '8px' }}>
+          🏆 Top conquerors
+        </div>
+        {leaderboard.length === 0 ? (
+          <p style={{ fontSize: '0.78rem', color: '#bbb', margin: 0 }}>No conquests recorded yet</p>
+        ) : (
+          <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+            {leaderboard.map((entry) => (
+              <li
+                key={entry.userId}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 0',
+                  fontSize: '0.8rem',
+                  borderBottom: '1px dotted #F0E8FF',
+                }}
+              >
+                <span style={{ width: '18px', fontWeight: 700, color: entry.rank === 1 ? '#FFB800' : '#999' }}>
+                  {entry.rank === 1 ? '👑' : `#${entry.rank}`}
+                </span>
+                <span style={{ flex: 1, fontWeight: 600, color: '#2D1B4E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {usernameMap[entry.userId] ?? entry.userId.slice(0, 10)}
+                </span>
+                <span style={{ fontWeight: 700, color: '#A020C8' }}>{entry.winCount}W</span>
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
     </aside>
   );

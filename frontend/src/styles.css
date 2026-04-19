@@ -1,3 +1,6 @@
+/* Remove browser focus rectangle on Leaflet polygon click */
+.leaflet-interactive:focus { outline: none; }
+
 :root {
   font-family: "Trebuchet MS", "Marker Felt", "Avenir Next", sans-serif;
   color: #3a2245;

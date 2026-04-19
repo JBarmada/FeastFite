@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 
 interface Props {
   lockedUntil: Date | string | null;
+  ownerId?: string | null;
 }
 
 function formatRemaining(ms: number): string {
-  if (ms <= 0) return 'Open';
+  if (ms <= 0) return 'Conquered';
   const totalSecs = Math.ceil(ms / 1000);
   const h = Math.floor(totalSecs / 3600);
   const m = Math.floor((totalSecs % 3600) / 60);
@@ -15,11 +16,7 @@ function formatRemaining(ms: number): string {
   return `${s}s`;
 }
 
-/**
- * Pure frontend countdown timer driven by `lockedUntil`.
- * No server calls — ticks locally every second.
- */
-export function LockCountdown({ lockedUntil }: Props) {
+export function LockCountdown({ lockedUntil, ownerId }: Props) {
   const [remaining, setRemaining] = useState(0);
 
   useEffect(() => {
@@ -39,6 +36,33 @@ export function LockCountdown({ lockedUntil }: Props) {
   }, [lockedUntil]);
 
   const isLocked = remaining > 0;
+  const isClaimed = Boolean(ownerId);
+
+  let label: string;
+  let bg: string;
+  let color: string;
+  let border: string;
+  let icon: string;
+
+  if (isLocked) {
+    label = formatRemaining(remaining);
+    bg = '#FFE0EC';
+    color = '#C73060';
+    border = '#FF6B9D';
+    icon = '🔒';
+  } else if (isClaimed) {
+    label = 'Conquered';
+    bg = '#EDE9FE';
+    color = '#6D28D9';
+    border = '#A78BFA';
+    icon = '👑';
+  } else {
+    label = 'Unclaimed';
+    bg = '#E0F7EC';
+    color = '#1A7A4A';
+    border = '#6BCB77';
+    icon = '✨';
+  }
 
   return (
     <span
@@ -51,12 +75,12 @@ export function LockCountdown({ lockedUntil }: Props) {
         fontSize: '0.78rem',
         fontWeight: 700,
         letterSpacing: '0.02em',
-        background: isLocked ? '#FFE0EC' : '#E0F7EC',
-        color: isLocked ? '#C73060' : '#1A7A4A',
-        border: `1.5px solid ${isLocked ? '#FF6B9D' : '#6BCB77'}`,
+        background: bg,
+        color,
+        border: `1.5px solid ${border}`,
       }}
     >
-      {isLocked ? '🔒' : '✨'} {formatRemaining(remaining)}
+      {icon} {label}
     </span>
   );
 }
