@@ -20,9 +20,9 @@ export function MapPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--color-bg)' }}>
+    <div className="ff-map-page">
       <Navbar />
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      <div className="ff-map-shell">
         <MapView onClaim={handleClaim} refreshKey={mapRefreshKey} />
       </div>
     </div>

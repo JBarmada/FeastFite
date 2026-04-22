@@ -74,7 +74,7 @@ export function MapView({ onClaim, refreshKey }: MapViewProps) {
   const [selected, setSelected] = useState<Territory | null>(null);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div className="ff-map-view">
       <MapContainer
         center={MAP_CONFIG.defaultCenter}
         zoom={MAP_CONFIG.defaultZoom}
@@ -82,6 +82,7 @@ export function MapView({ onClaim, refreshKey }: MapViewProps) {
         maxZoom={MAP_CONFIG.maxZoom}
         maxBounds={MAP_CONFIG.maxBounds}
         maxBoundsViscosity={0.9}
+        className="ff-map-canvas"
         style={{ width: '100%', height: '100%' }}
       >
         {/* Tile layer — swap URL in mapConfig.ts to change to Google Maps / Mapbox */}

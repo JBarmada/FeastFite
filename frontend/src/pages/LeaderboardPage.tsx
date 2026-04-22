@@ -15,54 +15,49 @@ interface LeaderboardUser {
 
 const economyClient = axios.create({ baseURL: '/api/economy' });
 
+const PODIUM_STYLES = [
+  {
+    bg: 'linear-gradient(135deg, #FFE566 0%, #FFB800 80%)',
+    border: 'rgba(255,200,0,0.5)',
+    trophy: '🥇',
+    badge: 'WEEKLY CHAMPION',
+    badgeBg: 'rgba(180,100,0,0.15)',
+    badgeColor: '#7A4100',
+  },
+  {
+    bg: 'linear-gradient(135deg, #E8E8E8 0%, #BFBFBF 100%)',
+    border: 'rgba(160,160,160,0.5)',
+    trophy: '🥈',
+    badge: 'Silver Spoon',
+    badgeBg: 'rgba(100,100,100,0.1)',
+    badgeColor: '#555',
+  },
+  {
+    bg: 'linear-gradient(135deg, #EEC88A 0%, #C89050 100%)',
+    border: 'rgba(160,110,50,0.5)',
+    trophy: '🥉',
+    badge: 'Bronze Bite',
+    badgeBg: 'rgba(120,70,20,0.12)',
+    badgeColor: '#6B3A10',
+  },
+];
+
 export function LeaderboardPage() {
-  const [tab, setTab] = useState<'global' | 'weekly' | 'territories'>('global');
+  const [tab, setTab] = useState<'global' | 'weekly'>('global');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<LeaderboardUser[]>([]);
 
-  // Territories tab
-  const [territories, setTerritories] = useState<Territory[]>([]);
-  const [loadingTerritories, setLoadingTerritories] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [territoryHistory, setTerritoryHistory] = useState<Record<string, ClaimHistoryEntry[]>>({});
-
   useEffect(() => {
-    if (tab !== 'territories') return;
-    setLoadingTerritories(true);
-    // Fetch territories for the USC Village area
-    territoryApi
-      .getByBbox([-118.292, 34.019, -118.278, 34.027])
-      .then((ts) => setTerritories(ts.filter((t) => t.ownerId)))
-      .catch(() => {})
-      .finally(() => setLoadingTerritories(false));
-  }, [tab]);
-
-  async function expandTerritory(territoryId: string) {
-    if (expandedId === territoryId) {
-      setExpandedId(null);
-      return;
-    }
-    setExpandedId(territoryId);
-    if (!territoryHistory[territoryId]) {
-      const hist = await territoryApi.getHistory(territoryId).catch(() => []);
-      setTerritoryHistory((prev) => ({ ...prev, [territoryId]: hist }));
-    }
-  }
-
-  useEffect(() => {
-    if (tab === 'territories') return;
     async function fetchData() {
       setLoading(true);
       try {
         const endpoint = tab === 'weekly' ? '/leaderboard/weekly' : '/leaderboard/global';
         const { data: json } = await economyClient.get<{ leaderboard: { userId: string; totalPoints: number; currentStreak?: number }[] }>(endpoint);
         const rows = json.leaderboard ?? [];
-
         const ids = rows.map((r) => r.userId).filter(Boolean);
         const usernameMap = ids.length > 0
           ? await profileApi.lookupUsernames(ids).catch(() => ({} as Record<string, string>))
           : {};
-
         setData(rows.map((r) => ({
           ...r,
           username: usernameMap[r.userId] ?? `Foodie_${r.userId.slice(0, 5)}`,
@@ -75,96 +70,219 @@ export function LeaderboardPage() {
     void fetchData();
   }, [tab]);
 
-  return (
-    <div style={{ minHeight: '100vh', background: '#F8F9FA' }}>
-      <Navbar />
+  const top3 = data.slice(0, 3);
+  const rest = data.slice(3);
 
-      <main style={{ maxWidth: '800px', margin: '0 auto', padding: '40px 20px' }}>
-        <div style={{
-          background: '#fff', borderRadius: '16px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.05)', overflow: 'hidden',
-        }}>
+  return (
+    <div style={{ minHeight: '100vh' }}>
+      <Navbar />
+      <div style={{ paddingTop: '40px' }}>
+        <div className="page-card">
 
           {/* Header */}
-          <div style={{
-            background: 'linear-gradient(135deg, #FF9E5E, #FF5E8E)',
-            padding: '30px 20px', textAlign: 'center', color: '#fff',
-          }}>
-            <h1 style={{ margin: 0, fontSize: '2.5rem' }}>🏆 Wall of Fame</h1>
-            <p style={{ margin: '10px 0 0 0', opacity: 0.9 }}>Who rules the Village?</p>
+          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+            <div style={{ fontSize: '3.5rem', lineHeight: 1 }}>🧁🏆</div>
+            <h1 style={{
+              margin: '12px 0 4px',
+              fontFamily: 'var(--font-display)',
+              fontSize: '2.2rem',
+              color: '#2D1040',
+              textShadow: '0 2px 0 rgba(255,255,255,0.6)',
+            }}>
+              Hall of Fame: Leaders
+            </h1>
           </div>
 
           {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid #E9ECEF' }}>
-            {(['global', 'weekly', 'territories'] as const).map((t) => (
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '24px' }}>
+            {(['global', 'weekly'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 style={{
-                  flex: 1, padding: '16px 0', border: 'none', background: 'transparent',
-                  cursor: 'pointer', fontWeight: 700, fontSize: '1rem',
-                  color: tab === t ? '#FF5E8E' : '#ADB5BD',
-                  borderBottom: tab === t ? '3px solid #FF5E8E' : '3px solid transparent',
+                  padding: '8px 28px',
+                  borderRadius: '999px',
+                  border: '2px solid',
+                  borderColor: tab === t ? 'transparent' : 'rgba(160,32,200,0.3)',
+                  background: tab === t
+                    ? 'linear-gradient(135deg, #4DC87A, #2EA85A)'
+                    : 'rgba(255,255,255,0.5)',
+                  color: tab === t ? '#fff' : '#A020C8',
+                  fontWeight: 800,
+                  fontSize: '0.95rem',
+                  cursor: 'pointer',
                   textTransform: 'capitalize',
+                  boxShadow: tab === t ? '0 4px 14px rgba(61,196,90,0.35)' : 'none',
+                  transition: 'all 150ms ease',
                 }}
               >
-                {t === 'territories' ? '🗺️ Territories' : t}
+                {t === 'global' ? '🌍 Global' : '📅 Weekly'}
               </button>
             ))}
           </div>
 
-          {/* Content */}
-          <div style={{ padding: '20px' }}>
-            {tab === 'territories' ? (
-              loadingTerritories ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#CED4DA' }}>
-                  <span style={{ fontSize: '2rem' }}>🗺️</span>
-                  <p>Loading territories...</p>
+          <h2 style={{
+            textAlign: 'center',
+            fontFamily: 'var(--font-display)',
+            fontSize: '1.2rem',
+            color: '#2D1040',
+            margin: '0 0 20px',
+          }}>
+            {tab === 'weekly' ? 'Weekly World Leaders' : 'All-Time Champions'}
+          </h2>
+
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#7A5490' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🍩</div>
+              <p style={{ fontWeight: 700 }}>Loading legends...</p>
+            </div>
+          ) : data.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#7A5490' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '12px' }}>👻</div>
+              <p style={{ fontWeight: 700 }}>No one here yet. Go claim some turf!</p>
+            </div>
+          ) : (
+            <>
+              {/* Podium top 3 */}
+              {top3.length > 0 && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${Math.min(top3.length, 3)}, 1fr)`,
+                  gap: '14px',
+                  marginBottom: '20px',
+                }}>
+                  {top3.map((user, i) => {
+                    const p = PODIUM_STYLES[i]!;
+                    const score = tab === 'weekly'
+                      ? `${(user.totalPoints ?? 0).toLocaleString()}`
+                      : `${(user.totalPoints ?? 0).toLocaleString()}`;
+                    return (
+                      <div key={user.userId} style={{
+                        background: p.bg,
+                        border: `2px solid ${p.border}`,
+                        borderRadius: '20px',
+                        padding: '20px 14px',
+                        textAlign: 'center',
+                        boxShadow: '0 6px 20px rgba(0,0,0,0.1)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+                      }}>
+                        <div style={{ fontSize: '2.2rem' }}>{p.trophy}</div>
+                        <div style={{
+                          width: '52px', height: '52px', borderRadius: '50%',
+                          background: 'rgba(255,255,255,0.5)',
+                          border: '3px solid rgba(255,255,255,0.8)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '1.8rem',
+                        }}>
+                          👾
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#2D1040', lineHeight: 1.2 }}>
+                          {user.username}
+                        </div>
+                        <div style={{
+                          background: 'rgba(255,255,255,0.7)',
+                          borderRadius: '999px',
+                          padding: '4px 14px',
+                          fontWeight: 900,
+                          fontSize: '1rem',
+                          color: '#2D1040',
+                          border: '1.5px solid rgba(255,255,255,0.9)',
+                        }}>
+                          {score}
+                        </div>
+                        {user.currentStreak ? (
+                          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#FF5E00' }}>
+                            🔥 {user.currentStreak}d streak
+                          </div>
+                        ) : null}
+                        <div style={{
+                          background: p.badgeBg,
+                          color: p.badgeColor,
+                          borderRadius: '999px',
+                          padding: '3px 12px',
+                          fontSize: '0.68rem',
+                          fontWeight: 800,
+                          letterSpacing: '0.04em',
+                          textTransform: 'uppercase',
+                          border: `1px solid ${p.border}`,
+                        }}>
+                          {p.badge}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ) : territories.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#CED4DA' }}>
-                  <span style={{ fontSize: '2rem' }}>👻</span>
-                  <p>No conquered territories yet!</p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {territories.map((territory) => (
-                    <TerritoryLeaderboardCard
-                      key={territory.id}
-                      territory={territory}
-                      expanded={expandedId === territory.id}
-                      history={territoryHistory[territory.id] ?? null}
-                      onExpand={() => void expandTerritory(territory.id)}
-                    />
+              )}
+
+              {/* Ranks 4+ in 3-column grid */}
+              {rest.length > 0 && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                  gap: '10px',
+                }}>
+                  {rest.map((user, i) => (
+                    <div key={user.userId} style={{
+                      background: 'rgba(255,255,255,0.55)',
+                      border: '1.5px solid rgba(255,255,255,0.7)',
+                      borderRadius: '14px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                    }}>
+                      <div style={{
+                        width: '28px', textAlign: 'center',
+                        fontWeight: 800, fontSize: '0.88rem', color: '#7A5490', flexShrink: 0,
+                      }}>
+                        {i + 4}
+                      </div>
+                      <div style={{
+                        width: '36px', height: '36px', borderRadius: '50%',
+                        background: 'rgba(160,32,200,0.12)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '1.2rem', flexShrink: 0,
+                      }}>
+                        👾
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontWeight: 700, fontSize: '0.85rem', color: '#2D1040',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {user.username}
+                        </div>
+                        {user.currentStreak ? (
+                          <div style={{ fontSize: '0.7rem', color: '#FF5E00', fontWeight: 600 }}>
+                            🔥 {user.currentStreak}d
+                          </div>
+                        ) : null}
+                      </div>
+                      <div style={{
+                        background: 'linear-gradient(135deg, #FFE08A, #FFA800)',
+                        borderRadius: '999px',
+                        padding: '3px 10px',
+                        fontWeight: 800,
+                        fontSize: '0.78rem',
+                        color: '#4a3200',
+                        flexShrink: 0,
+                      }}>
+                        {(user.totalPoints ?? 0).toLocaleString()}
+                      </div>
+                    </div>
                   ))}
                 </div>
-              )
-            ) : loading ? (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#CED4DA' }}>
-                <span style={{ fontSize: '2rem' }}>🍩</span>
-                <p>Loading legends...</p>
-              </div>
-            ) : data.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#CED4DA' }}>
-                <span style={{ fontSize: '2rem' }}>👻</span>
-                <p>No one found here.</p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {data.map((user, i) => (
-                  <RankRow key={user.userId} rank={i + 1} user={user} tab={tab} />
-                ))}
-              </div>
-            )}
-          </div>
-
+              )}
+            </>
+          )}
         </div>
-      </main>
+      </div>
     </div>
   );
 }
 
-function TerritoryLeaderboardCard({
+// Keep TerritoryLeaderboardCard for future territories tab re-addition
+function _TerritoryLeaderboardCard({
   territory,
   expanded,
   history,
@@ -176,123 +294,44 @@ function TerritoryLeaderboardCard({
   onExpand: () => void;
 }) {
   return (
-    <div style={{
-      border: '1px solid #E9ECEF',
-      borderRadius: '12px',
-      overflow: 'hidden',
-    }}>
-      {/* Header row */}
+    <div style={{ border: '1.5px solid rgba(255,255,255,0.6)', borderRadius: '14px', overflow: 'hidden', background: 'rgba(255,255,255,0.4)' }}>
       <button
         onClick={onExpand}
         style={{
           display: 'flex', alignItems: 'center', gap: '12px',
-          padding: '16px', width: '100%', background: expanded ? '#FFF4E6' : '#fff',
+          padding: '14px 16px', width: '100%',
+          background: expanded ? 'rgba(255,244,230,0.8)' : 'transparent',
           border: 'none', cursor: 'pointer', textAlign: 'left',
-          borderBottom: expanded ? '1px solid #FFD8A8' : 'none',
         }}
       >
-        <div style={{ fontSize: '1.5rem' }}>🏴</div>
+        <div style={{ fontSize: '1.4rem' }}>🏴</div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, color: '#343A40', fontSize: '1rem' }}>{territory.name}</div>
-          <div style={{ fontSize: '0.8rem', color: '#868E96' }}>
-            👑 {territory.ownerName ?? 'Unknown'}
-          </div>
+          <div style={{ fontWeight: 700, color: '#2D1040', fontSize: '0.95rem' }}>{territory.name}</div>
+          <div style={{ fontSize: '0.78rem', color: '#7A5490' }}>👑 {territory.ownerName ?? 'Unknown'}</div>
         </div>
-        <div style={{ fontSize: '1.2rem', color: '#ADB5BD' }}>{expanded ? '▲' : '▼'}</div>
+        <div style={{ color: '#7A5490' }}>{expanded ? '▲' : '▼'}</div>
       </button>
-
-      {/* Expanded leaderboard */}
-      {expanded && (
-        <div style={{ padding: '12px 16px', background: '#FAFAFA' }}>
-          {history === null ? (
-            <p style={{ textAlign: 'center', color: '#CED4DA', margin: 0 }}>Loading…</p>
-          ) : history.length === 0 ? (
-            <p style={{ textAlign: 'center', color: '#CED4DA', margin: 0 }}>No submissions yet.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {history.map((entry, i) => (
-                <div key={entry.id} style={{
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '10px 12px', borderRadius: '10px',
-                  background: entry.isWinner ? '#FFF4E6' : '#fff',
-                  border: `1px solid ${entry.isWinner ? '#FFD8A8' : '#E9ECEF'}`,
-                }}>
-                  <div style={{ width: '28px', textAlign: 'center', fontWeight: 800, color: '#FF9E5E', fontSize: '1rem' }}>
-                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#343A40' }}>
-                      {entry.claimantName}
-                      {entry.isWinner && (
-                        <span style={{ marginLeft: '6px', fontSize: '0.68rem', background: '#FFD8A8', color: '#7A4100', padding: '1px 6px', borderRadius: '999px', fontWeight: 800 }}>
-                          👑 Owner
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#ADB5BD' }}>
-                      {new Date(entry.claimedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 800, color: '#FF9E5E', fontSize: '0.9rem' }}>
-                      {entry.avgRating != null ? `⭐ ${entry.avgRating.toFixed(1)}` : '—'}
-                    </div>
-                    {entry.voteCount > 0 && (
-                      <div style={{ fontSize: '0.7rem', color: '#ADB5BD' }}>{entry.voteCount} votes</div>
-                    )}
-                  </div>
-                </div>
-              ))}
+      {expanded && history && (
+        <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.3)' }}>
+          {history.map((entry, i) => (
+            <div key={entry.id} style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px 10px', borderRadius: '10px', marginBottom: '6px',
+              background: entry.isWinner ? 'rgba(255,244,230,0.8)' : 'rgba(255,255,255,0.5)',
+            }}>
+              <span style={{ fontWeight: 700, width: '24px', textAlign: 'center' }}>
+                {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
+              </span>
+              <span style={{ flex: 1, fontWeight: 600, fontSize: '0.85rem', color: '#2D1040' }}>
+                {entry.claimantName}
+              </span>
+              <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#FF9E5E' }}>
+                {entry.avgRating != null ? `⭐ ${entry.avgRating.toFixed(1)}` : '—'}
+              </span>
             </div>
-          )}
+          ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function RankRow({ rank, user, tab }: { rank: number; user: LeaderboardUser; tab: string }) {
-  let rankIcon = `#${rank}`;
-  if (rank === 1) rankIcon = '🥇';
-  else if (rank === 2) rankIcon = '🥈';
-  else if (rank === 3) rankIcon = '🥉';
-
-  const isKing = rank === 1;
-  const isTop3 = rank <= 3;
-
-  const scoreLabel = tab === 'territories'
-    ? `${user.territoriesCount ?? 0} Territories`
-    : `${(user.totalPoints ?? 0).toLocaleString()} pts`;
-
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', padding: '16px',
-      background: isTop3 ? '#FFF4E6' : '#fff',
-      border: isTop3 ? '1px solid #FFD8A8' : '1px solid #E9ECEF',
-      borderRadius: '12px',
-    }}>
-      <div style={{ width: '40px', fontSize: isTop3 ? '1.5rem' : '1.2rem', fontWeight: 800, color: '#FF9E5E', textAlign: 'center' }}>
-        {rankIcon}
-      </div>
-      <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#FFE8CC', margin: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
-        👾
-      </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 700, color: '#343A40', fontSize: '1.1rem' }}>{user.username}</span>
-          {isKing && (
-            <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '999px', background: 'linear-gradient(90deg,#FFD700,#FFA500)', color: '#3B1F00', border: '1px solid #FFA500' }}>
-              👑 King of the Village
-            </span>
-          )}
-        </div>
-        {user.currentStreak ? (
-          <div style={{ fontSize: '0.8rem', color: '#FF5E8E', fontWeight: 600 }}>🔥 {user.currentStreak} day streak</div>
-        ) : null}
-      </div>
-      <div style={{ fontWeight: 800, fontSize: '1.2rem', color: tab === 'territories' ? '#A020C8' : '#FF9E5E' }}>
-        {scoreLabel}
-      </div>
     </div>
   );
 }
