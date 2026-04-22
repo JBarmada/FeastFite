@@ -114,7 +114,6 @@ jobs:
           kubectl set image deployment/profile-service   profile-service=$REPO/profile-service:$SHA   -n feastfite
           kubectl set image deployment/kong              kong=$REPO/kong:$SHA                      -n feastfite
           kubectl set image deployment/frontend          frontend=$REPO/frontend:$SHA              -n feastfite
-          kubectl rollout restart deployment/kong -n feastfite
 
       - name: Force RabbitMQ onto latest StatefulSet revision
         run: |
