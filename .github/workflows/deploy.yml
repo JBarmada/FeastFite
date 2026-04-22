@@ -144,7 +144,12 @@ jobs:
 
           for dep in auth-service territory-service vote-service economy-service profile-service kong frontend; do
             echo "Waiting for $dep..."
-            if ! kubectl rollout status deployment/$dep -n feastfite --timeout=600s; then
+            timeout=600s
+            if [ "$dep" = "kong" ]; then
+              timeout=1800s
+            fi
+
+            if ! kubectl rollout status deployment/$dep -n feastfite --timeout=$timeout; then
               failed=1
             fi
           done
