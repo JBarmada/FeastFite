@@ -32,7 +32,7 @@ services:
         paths:
           - /ws/vote
         strip_path: false
-        protocols: [ws, wss]
+        protocols: [http, https]
 
   - name: economy-service
     url: http://economy-service:3004
