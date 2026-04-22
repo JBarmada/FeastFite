@@ -116,6 +116,23 @@ jobs:
           kubectl set image deployment/frontend          frontend=$REPO/frontend:$SHA              -n feastfite
           kubectl rollout restart deployment/kong -n feastfite
 
+      - name: Force RabbitMQ onto latest StatefulSet revision
+        run: |
+          kubectl rollout restart statefulset/rabbitmq -n feastfite
+
+          current_revision="$(kubectl get statefulset rabbitmq -n feastfite -o jsonpath='{.status.currentRevision}')"
+          update_revision="$(kubectl get statefulset rabbitmq -n feastfite -o jsonpath='{.status.updateRevision}')"
+          pod_revision="$(kubectl get pod rabbitmq-0 -n feastfite -o jsonpath='{.metadata.labels.controller-revision-hash}' 2>/dev/null || true)"
+
+          echo "RabbitMQ StatefulSet current revision: $current_revision"
+          echo "RabbitMQ StatefulSet update revision:  $update_revision"
+          echo "RabbitMQ pod revision:                $pod_revision"
+
+          if [ "$pod_revision" != "$update_revision" ]; then
+            echo "Deleting stale rabbitmq-0 pod so the StatefulSet can recreate it from the latest template..."
+            kubectl delete pod rabbitmq-0 -n feastfite --wait=false
+          fi
+
       - name: Wait for rollouts to complete
         run: |
           failed=0
