@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { PrivateRoute } from './components/PrivateRoute';
@@ -11,10 +12,17 @@ import { VotingPage } from './pages/VotingPage';
 import { ShopPage } from './pages/ShopPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
+import { SplashScreen } from './components/ui/SplashScreen';
 
 export function App() {
+  const [showSplash, setShowSplash] = useState(
+    () => !sessionStorage.getItem('splashSeen')
+  );
+
   return (
-    <BrowserRouter>
+    <>
+      {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
+      <BrowserRouter>
       <AuthProvider>
         <Routes>
           {/* Public routes */}
@@ -37,5 +45,6 @@ export function App() {
         </Routes>
       </AuthProvider>
     </BrowserRouter>
+    </>
   );
 }
