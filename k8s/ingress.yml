@@ -17,7 +17,7 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: "gce"
     networking.gke.io/managed-certificates: "feastfite-cert-v2"
-    kubernetes.io/ingress.allow-http: "false"          # redirect HTTP → HTTPS
+    kubernetes.io/ingress.allow-http: "true"
     networking.gke.io/v1beta1.FrontendConfig: "feastfite-frontend-config"
 spec:
   defaultBackend:
@@ -61,5 +61,5 @@ metadata:
   namespace: feastfite
 spec:
   redirectToHttps:
-    enabled: true
+    enabled: false
     responseCodeName: MOVED_PERMANENTLY_DEFAULT

@@ -39,6 +39,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify public hostname wiring
+        run: node scripts/verify-public-hostname.js
+
       - name: Authenticate to GCP (Workload Identity — no static keys)
         uses: google-github-actions/auth@v2
         with:
@@ -160,6 +163,41 @@ jobs:
 
       - name: Print pod status
         run: kubectl get pods -n feastfite
+
+      - name: Verify ingress certificate wiring
+        run: |
+          HOSTNAME=$(grep -m1 -E '^[[:space:]]*-[[:space:]]+host:' k8s/ingress.yml | awk '{print $3}')
+          CERT_RESOURCE=$(awk 'BEGIN{found=0} /^kind: ManagedCertificate$/ {found=1; next} found && /^[[:space:]]*name:/ {print $2; exit}' k8s/ingress.yml)
+
+          echo "Expecting hostname: $HOSTNAME"
+          echo "Expecting managed certificate resource: $CERT_RESOURCE"
+
+          ATTACHED_CERT=""
+          for attempt in $(seq 1 20); do
+            ATTACHED_CERT=$(kubectl get ingress feastfite-ingress -n feastfite -o jsonpath='{.metadata.annotations.ingress\.gcp\.kubernetes\.io/pre-shared-cert}' 2>/dev/null || true)
+            if [ -n "$ATTACHED_CERT" ]; then
+              break
+            fi
+            echo "Waiting for ingress to attach a Google-managed cert..."
+            sleep 15
+          done
+
+          if [ -z "$ATTACHED_CERT" ]; then
+            echo "Ingress never attached a Google-managed certificate"
+            exit 1
+          fi
+
+          echo "Attached Google-managed cert: $ATTACHED_CERT"
+          gcloud compute ssl-certificates describe "$ATTACHED_CERT" --global --project "${{ secrets.GCP_PROJECT_ID }}" > attached-cert.yaml
+
+          if ! grep -q "$HOSTNAME" attached-cert.yaml; then
+            echo "Attached certificate does not contain expected hostname $HOSTNAME"
+            cat attached-cert.yaml
+            exit 1
+          fi
+
+          kubectl get managedcertificate "$CERT_RESOURCE" -n feastfite -o yaml
+          cat attached-cert.yaml
 
       - name: Diagnostics on rollout failure
         if: failure()
