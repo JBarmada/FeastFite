@@ -88,11 +88,19 @@ jobs:
           cluster_name: ${{ secrets.GKE_CLUSTER_NAME }}
           location: ${{ env.GCP_REGION }}
 
-      - name: Apply namespace, configmap, infra (idempotent)
+      - name: Apply Kubernetes manifests
         run: |
           kubectl apply -f k8s/namespace.yml
           kubectl apply -f k8s/configmap.yml
           kubectl apply -f k8s/infra/
+          kubectl apply -f k8s/auth/
+          kubectl apply -f k8s/territory/
+          kubectl apply -f k8s/vote/
+          kubectl apply -f k8s/economy/
+          kubectl apply -f k8s/profile/
+          kubectl apply -f k8s/gateway/
+          kubectl apply -f k8s/frontend/
+          kubectl apply -f k8s/ingress.yml
 
       - name: Update image tags to git SHA
         env:
@@ -106,16 +114,47 @@ jobs:
           kubectl set image deployment/profile-service   profile-service=$REPO/profile-service:$SHA   -n feastfite
           kubectl set image deployment/kong              kong=$REPO/kong:$SHA                      -n feastfite
           kubectl set image deployment/frontend          frontend=$REPO/frontend:$SHA              -n feastfite
+          kubectl rollout restart deployment/kong -n feastfite
 
       - name: Wait for rollouts to complete
         run: |
+          failed=0
+          for sts in rabbitmq; do
+            echo "Waiting for statefulset/$sts..."
+            if ! kubectl rollout status statefulset/$sts -n feastfite --timeout=600s; then
+              failed=1
+            fi
+          done
+
           for dep in auth-service territory-service vote-service economy-service profile-service kong frontend; do
             echo "Waiting for $dep..."
-            kubectl rollout status deployment/$dep -n feastfite --timeout=600s || echo "WARNING: $dep rollout timed out - check pod status"
+            if ! kubectl rollout status deployment/$dep -n feastfite --timeout=600s; then
+              failed=1
+            fi
           done
+
+          if [ "$failed" -ne 0 ]; then
+            exit 1
+          fi
 
       - name: Print pod status
         run: kubectl get pods -n feastfite
+
+      - name: Diagnostics on rollout failure
+        if: failure()
+        run: |
+          kubectl get pods -n feastfite -o wide
+          kubectl get endpoints rabbitmq -n feastfite || true
+          kubectl describe statefulset/rabbitmq -n feastfite || true
+          kubectl describe pod -l app=rabbitmq -n feastfite || true
+          kubectl logs statefulset/rabbitmq -n feastfite --tail=200 || true
+
+          for dep in auth-service territory-service vote-service economy-service profile-service kong frontend; do
+            echo "=== deployment/$dep ==="
+            kubectl describe deployment/$dep -n feastfite || true
+            kubectl describe pod -l app=$dep -n feastfite || true
+            kubectl logs deployment/$dep -n feastfite --tail=200 || true
+          done
 
       - name: Print ingress IP
         run: kubectl get ingress -n feastfite

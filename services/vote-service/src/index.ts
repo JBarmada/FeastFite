@@ -6,7 +6,7 @@ import { createServer } from 'http';
 import Redis from 'ioredis';
 import { Client as MinioClient } from 'minio';
 import { Server } from 'socket.io';
-import { createAmqpConnection, type VoteWinnerDeclaredEvent } from '@feastfite/shared';
+import { startAmqpConnector, type VoteWinnerDeclaredEvent } from '@feastfite/shared';
 import type { Channel } from 'amqplib';
 
 const app = express();
@@ -363,9 +363,17 @@ io.on('connection', (socket) => {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 async function bootstrap(): Promise<void> {
-  const amqpConnection = await createAmqpConnection();
-  amqpChannel = amqpConnection.channel;
   await ensureMinioBucket();
+  startAmqpConnector({
+    logPrefix: '[vote-service][amqp]',
+    onConnect: ({ channel }) => {
+      amqpChannel = channel;
+    },
+    onDisconnect: async () => {
+      amqpChannel = null;
+      console.warn('[vote-service][amqp] channel unavailable until reconnect');
+    },
+  });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
