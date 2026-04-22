@@ -6,8 +6,7 @@ metadata:
   namespace: feastfite
 spec:
   domains:
-    - feastfite.com          # replace with your actual domain
-    - www.feastfite.com      # remove if not needed
+    - feastfite-demo.duckdns.org
 ---
 # ── GKE Ingress (GCP L7 HTTPS Load Balancer) ─────────────────────────────────
 apiVersion: networking.k8s.io/v1
@@ -22,7 +21,7 @@ metadata:
     networking.gke.io/v1beta1.FrontendConfig: "feastfite-frontend-config"
 spec:
   rules:
-    - host: feastfite.com    # replace with your actual domain
+    - host: feastfite-demo.duckdns.org
       http:
         paths:
           # API and WebSocket traffic → Kong

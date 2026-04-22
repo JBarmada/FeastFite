@@ -75,7 +75,7 @@ plugins:
     config:
       origins:
         - "http://localhost:5173"
-        - "https://feastfite.com"
+        - "https://feastfite-demo.duckdns.org"
       methods:
         - GET
         - POST
