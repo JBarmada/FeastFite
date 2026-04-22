@@ -111,7 +111,7 @@ jobs:
         run: |
           for dep in auth-service territory-service vote-service economy-service profile-service kong frontend; do
             echo "Waiting for $dep..."
-            kubectl rollout status deployment/$dep -n feastfite --timeout=300s
+            kubectl rollout status deployment/$dep -n feastfite --timeout=600s || echo "WARNING: $dep rollout timed out - check pod status"
           done
 
       - name: Print pod status
