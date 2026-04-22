@@ -22,7 +22,7 @@ async function start(): Promise<void> {
   app.use(helmet());
   app.use(
     cors({
-      origin: ['http://localhost:5173', 'https://feastfite-demo.duckdns.org'],
+      origin: ['http://localhost:5173', 'https://feastfite-demo2.duckdns.org'],
       credentials: true,
     })
   );

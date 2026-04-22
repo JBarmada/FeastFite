@@ -6,7 +6,7 @@ metadata:
   namespace: feastfite
 spec:
   domains:
-    - feastfite-demo.duckdns.org
+    - feastfite-demo2.duckdns.org
 ---
 # ── GKE Ingress (GCP L7 HTTPS Load Balancer) ─────────────────────────────────
 apiVersion: networking.k8s.io/v1
@@ -26,7 +26,7 @@ spec:
       port:
         number: 80
   rules:
-    - host: feastfite-demo.duckdns.org
+    - host: feastfite-demo2.duckdns.org
       http:
         paths:
           # API and WebSocket traffic → Kong
