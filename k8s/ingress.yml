@@ -1,0 +1,61 @@
+# ── Managed SSL certificate (GCP auto-provisions + renews) ───────────────────
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: feastfite-cert
+  namespace: feastfite
+spec:
+  domains:
+    - feastfite.com          # replace with your actual domain
+    - www.feastfite.com      # remove if not needed
+---
+# ── GKE Ingress (GCP L7 HTTPS Load Balancer) ─────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: feastfite-ingress
+  namespace: feastfite
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    networking.gke.io/managed-certificates: "feastfite-cert"
+    kubernetes.io/ingress.allow-http: "false"          # redirect HTTP → HTTPS
+    networking.gke.io/v1beta1.FrontendConfig: "feastfite-frontend-config"
+spec:
+  rules:
+    - host: feastfite.com    # replace with your actual domain
+      http:
+        paths:
+          # API and WebSocket traffic → Kong
+          - path: /api/*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: kong
+                port:
+                  number: 8000
+          - path: /ws/*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: kong
+                port:
+                  number: 8000
+          # Everything else → React frontend
+          - path: /*
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+---
+# ── Force HTTPS redirect ──────────────────────────────────────────────────────
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: feastfite-frontend-config
+  namespace: feastfite
+spec:
+  redirectToHttps:
+    enabled: true
+    responseCodeName: MOVED_PERMANENTLY_DEFAULT

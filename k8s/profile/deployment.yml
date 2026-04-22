@@ -1,13 +1,13 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vote-service
+  name: profile-service
   namespace: feastfite
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vote-service
+      app: profile-service
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -16,19 +16,19 @@ spec:
   template:
     metadata:
       labels:
-        app: vote-service
+        app: profile-service
     spec:
       terminationGracePeriodSeconds: 30
       containers:
-        - name: vote-service
-          image: us-central1-docker.pkg.dev/GCP_PROJECT_ID/feastfite/vote-service:latest
+        - name: profile-service
+          image: us-central1-docker.pkg.dev/GCP_PROJECT_ID/feastfite/profile-service:latest
           imagePullPolicy: Always
           ports:
-            - containerPort: 3003
+            - containerPort: 3005
               name: http
           env:
             - name: PORT
-              value: "3003"
+              value: "3005"
             - name: NODE_ENV
               valueFrom:
                 configMapKeyRef:
@@ -39,6 +39,22 @@ spec:
                 secretKeyRef:
                   name: jwt-secret
                   key: secret
+            - name: DB_HOST
+              value: postgres-profile
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: profile_db
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
             - name: REDIS_URL
               value: redis://redis:6379
             - name: RABBITMQ_USERNAME
@@ -70,11 +86,11 @@ spec:
                 configMapKeyRef:
                   name: feastfite-config
                   key: MINIO_USE_SSL
-            - name: MINIO_BUCKET_PHOTOS
+            - name: MINIO_BUCKET_AVATARS
               valueFrom:
                 configMapKeyRef:
                   name: feastfite-config
-                  key: MINIO_BUCKET_PHOTOS
+                  key: MINIO_BUCKET_AVATARS
             - name: MINIO_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
@@ -95,14 +111,14 @@ spec:
           readinessProbe:
             httpGet:
               path: /health
-              port: 3003
+              port: 3005
             initialDelaySeconds: 15
             periodSeconds: 10
             failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /health
-              port: 3003
+              port: 3005
             initialDelaySeconds: 30
             periodSeconds: 20
             failureThreshold: 3
@@ -114,12 +130,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vote-service
+  name: profile-service
   namespace: feastfite
 spec:
   selector:
-    app: vote-service
+    app: profile-service
   ports:
     - name: http
-      port: 3003
-      targetPort: 3003
+      port: 3005
+      targetPort: 3005
