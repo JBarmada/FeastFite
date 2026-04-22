@@ -321,17 +321,117 @@ export function VotingPage() {
             </section>
           </>
         ) : (
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div style={{ fontSize: '3rem', marginBottom: '12px' }}>⚔️</div>
-            <h1 style={{ margin: '0 0 8px', color: 'var(--color-primary)', fontFamily: 'var(--font-display)' }}>
-              Territory Gallery
-            </h1>
-            <p style={{ color: 'var(--color-text-secondary)', margin: '0 0 24px' }}>
-              Tap a territory on the map and hit <strong>Claim Territory</strong> to start a battle.
-            </p>
-            <button className="primary-button" onClick={() => navigate('/')}>
-              Go to Map
-            </button>
+          <div>
+            {/* Hero */}
+            <div style={{
+              background: 'linear-gradient(135deg, #A020C8 0%, #FF4FA3 60%, #FF9E5E 100%)',
+              borderRadius: 'var(--radius-xl)',
+              padding: '48px 32px',
+              textAlign: 'center',
+              marginBottom: '32px',
+              boxShadow: 'var(--shadow-lg)',
+            }}>
+              <div style={{ fontSize: '3.5rem', marginBottom: '12px' }}>🍔⚔️🍕</div>
+              <h1 style={{
+                margin: '0 0 10px',
+                color: '#fff',
+                fontFamily: 'var(--font-display)',
+                fontSize: '2rem',
+                textShadow: '0 2px 8px rgba(0,0,0,0.18)',
+              }}>
+                The Food Fight Arena
+              </h1>
+              <p style={{ color: 'rgba(255,255,255,0.88)', margin: '0 0 28px', fontSize: '1rem', lineHeight: 1.5 }}>
+                Pick a territory on the map, upload your best dish, and let the crowd decide who rules the block.
+              </p>
+              <button
+                className="primary-button"
+                onClick={() => navigate('/')}
+                style={{
+                  background: '#fff',
+                  color: 'var(--color-primary)',
+                  fontWeight: 800,
+                  fontSize: '1rem',
+                  padding: '12px 32px',
+                  border: 'none',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                }}
+              >
+                🗺️ Go to Map
+              </button>
+            </div>
+
+            {/* How it works */}
+            <h2 style={{
+              fontSize: '1rem',
+              fontWeight: 800,
+              color: 'var(--color-text-secondary)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              margin: '0 0 16px',
+            }}>
+              How it works
+            </h2>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '16px',
+              marginBottom: '40px',
+            }}>
+              {[
+                { emoji: '🗺️', step: '1', title: 'Pick a Territory', desc: 'Tap any colored zone on the map — unclaimed or rival-owned.' },
+                { emoji: '📸', step: '2', title: 'Upload Your Dish', desc: 'Snap a photo of your best meal from that spot and submit.' },
+                { emoji: '🗳️', step: '3', title: 'Win the Vote', desc: 'The community rates dishes 1–10. Highest score takes the block!' },
+              ].map(({ emoji, step, title, desc }) => (
+                <div key={step} style={{
+                  background: 'var(--color-surface)',
+                  border: '2px solid var(--color-border)',
+                  borderRadius: 'var(--radius-lg)',
+                  padding: '24px 20px',
+                  boxShadow: 'var(--shadow-sm)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                }}>
+                  <div style={{ fontSize: '2rem' }}>{emoji}</div>
+                  <div style={{
+                    display: 'inline-block',
+                    background: 'var(--color-primary-dim)',
+                    color: 'var(--color-primary)',
+                    fontWeight: 800,
+                    fontSize: '0.72rem',
+                    borderRadius: 'var(--radius-full)',
+                    padding: '2px 10px',
+                    width: 'fit-content',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                  }}>
+                    Step {step}
+                  </div>
+                  <div style={{ fontWeight: 800, color: 'var(--color-text-primary)', fontSize: '0.95rem' }}>{title}</div>
+                  <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.85rem', lineHeight: 1.5 }}>{desc}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tip */}
+            <div style={{
+              background: 'var(--color-primary-dim)',
+              border: '1.5px solid var(--color-primary-light)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '16px 20px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '12px',
+            }}>
+              <span style={{ fontSize: '1.4rem', flexShrink: 0 }}>💡</span>
+              <div>
+                <strong style={{ color: 'var(--color-primary)', fontSize: '0.9rem' }}>Pro tip: </strong>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+                  Win territories to earn points. Spend points on shields to lock your turf, or a battering ram to break through a defended zone.
+                </span>
+              </div>
+            </div>
           </div>
         )}
       </div>
