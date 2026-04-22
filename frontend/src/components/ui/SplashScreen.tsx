@@ -25,19 +25,18 @@ export function SplashScreen({ onDone }: SplashScreenProps) {
 
   return (
     <div
-      onClick={started ? dismiss : undefined}
+      onClick={started ? dismiss : start}
       style={{
         position: 'fixed',
         inset: 0,
         zIndex: 9999,
         background: '#000',
-        cursor: started ? 'pointer' : 'default',
+        cursor: 'pointer',
         opacity: fading ? 0 : 1,
         transition: 'opacity 0.7s ease',
         pointerEvents: fading ? 'none' : 'auto',
       }}
     >
-      {/* Video — hidden until started */}
       <video
         ref={videoRef}
         src="/videos/opener.mp4"
@@ -55,7 +54,6 @@ export function SplashScreen({ onDone }: SplashScreenProps) {
         }}
       />
 
-      {/* Title screen — visible until started */}
       {!started && (
         <div
           style={{
@@ -65,25 +63,7 @@ export function SplashScreen({ onDone }: SplashScreenProps) {
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
-        >
-          {/* Transparent clickable button overlaid on the image's TAP TO PLAY area */}
-          <button
-            onClick={start}
-            aria-label="Tap to Play"
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: '71%',
-              transform: 'translateX(-50%)',
-              width: '38%',
-              height: '12%',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              borderRadius: '9999px',
-            }}
-          />
-        </div>
+        />
       )}
     </div>
   );
