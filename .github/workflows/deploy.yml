@@ -188,16 +188,19 @@ jobs:
           fi
 
           echo "Attached Google-managed cert: $ATTACHED_CERT"
-          gcloud compute ssl-certificates describe "$ATTACHED_CERT" --global --project "${{ secrets.GCP_PROJECT_ID }}" > attached-cert.yaml
+          kubectl get managedcertificate "$CERT_RESOURCE" -n feastfite -o yaml > managed-cert.yaml
+          cat managed-cert.yaml
 
-          if ! grep -q "$HOSTNAME" attached-cert.yaml; then
-            echo "Attached certificate does not contain expected hostname $HOSTNAME"
-            cat attached-cert.yaml
+          if ! grep -q "$HOSTNAME" managed-cert.yaml; then
+            echo "ManagedCertificate resource does not contain expected hostname $HOSTNAME"
             exit 1
           fi
 
-          kubectl get managedcertificate "$CERT_RESOURCE" -n feastfite -o yaml
-          cat attached-cert.yaml
+          CERT_NAME=$(kubectl get managedcertificate "$CERT_RESOURCE" -n feastfite -o jsonpath='{.status.certificateName}' 2>/dev/null || true)
+          if [ -n "$CERT_NAME" ] && [ "$CERT_NAME" != "$ATTACHED_CERT" ]; then
+            echo "Ingress attached cert ($ATTACHED_CERT) does not match ManagedCertificate status ($CERT_NAME)"
+            exit 1
+          fi
 
       - name: Diagnostics on rollout failure
         if: failure()
