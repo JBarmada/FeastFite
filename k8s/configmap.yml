@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: feastfite-config
+  namespace: feastfite
+data:
+  NODE_ENV: "production"
+  JWT_EXPIRES_IN: "15m"
+  RABBITMQ_EXCHANGE: "feastfite.events"
+  MINIO_PORT: "9000"
+  MINIO_USE_SSL: "false"
+  MINIO_BUCKET_PHOTOS: "fight-photos"
+  MINIO_BUCKET_AVATARS: "avatars"

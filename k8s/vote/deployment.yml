@@ -8,45 +8,39 @@ spec:
   selector:
     matchLabels:
       app: vote-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       labels:
         app: vote-service
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
         - name: vote-service
-          image: feastfite/vote-service:latest
-          imagePullPolicy: IfNotPresent
+          image: us-central1-docker.pkg.dev/GCP_PROJECT_ID/feastfite/vote-service:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 3003
               name: http
           env:
             - name: PORT
               value: "3003"
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: feastfite-config
+                  key: NODE_ENV
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: secret
             - name: REDIS_URL
               value: redis://redis:6379
-            - name: RABBITMQ_URL
-              value: amqp://$(RABBITMQ_USERNAME):$(RABBITMQ_PASSWORD)@rabbitmq:5672
-            - name: RABBITMQ_EXCHANGE
-              value: feastfite.events
-            - name: MINIO_ENDPOINT
-              value: minio
-            - name: MINIO_PORT
-              value: "9000"
-            - name: MINIO_USE_SSL
-              value: "false"
-            - name: MINIO_BUCKET_PHOTOS
-              value: fight-photos
-            - name: MINIO_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: minio-credentials
-                  key: access-key
-            - name: MINIO_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: minio-credentials
-                  key: secret-key
             - name: RABBITMQ_USERNAME
               valueFrom:
                 secretKeyRef:
@@ -57,18 +51,65 @@ spec:
                 secretKeyRef:
                   name: rabbitmq-credentials
                   key: password
+            - name: RABBITMQ_URL
+              value: amqp://$(RABBITMQ_USERNAME):$(RABBITMQ_PASSWORD)@rabbitmq:5672
+            - name: RABBITMQ_EXCHANGE
+              valueFrom:
+                configMapKeyRef:
+                  name: feastfite-config
+                  key: RABBITMQ_EXCHANGE
+            - name: MINIO_ENDPOINT
+              value: minio
+            - name: MINIO_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: feastfite-config
+                  key: MINIO_PORT
+            - name: MINIO_USE_SSL
+              valueFrom:
+                configMapKeyRef:
+                  name: feastfite-config
+                  key: MINIO_USE_SSL
+            - name: MINIO_BUCKET_PHOTOS
+              valueFrom:
+                configMapKeyRef:
+                  name: feastfite-config
+                  key: MINIO_BUCKET_PHOTOS
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
           readinessProbe:
             httpGet:
               path: /health
               port: 3003
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /health
               port: 3003
-            initialDelaySeconds: 20
+            initialDelaySeconds: 30
             periodSeconds: 20
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
 ---
 apiVersion: v1
 kind: Service

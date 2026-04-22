@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: profile-service
+  namespace: feastfite
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: profile-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: profile-service
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: profile-service
+          image: us-central1-docker.pkg.dev/GCP_PROJECT_ID/feastfite/profile-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3005
+              name: http
+          env:
+            - name: PORT
+              value: "3005"
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: feastfite-config
+                  key: NODE_ENV
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: secret
+            - name: DB_HOST
+              value: postgres-profile
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: profile_db
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: REDIS_URL
+              value: redis://redis:6379
+            - name: RABBITMQ_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: username
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: password
+            - name: RABBITMQ_URL
+              value: amqp://$(RABBITMQ_USERNAME):$(RABBITMQ_PASSWORD)@rabbitmq:5672
+            - name: RABBITMQ_EXCHANGE
+              valueFrom:
+                configMapKeyRef:
+                  name: feastfite-config
+                  key: RABBITMQ_EXCHANGE
+            - name: MINIO_ENDPOINT
+              value: minio
+            - name: MINIO_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: feastfite-config
+                  key: MINIO_PORT
+            - name: MINIO_USE_SSL
+              valueFrom:
+                configMapKeyRef:
+                  name: feastfite-config
+                  key: MINIO_USE_SSL
+            - name: MINIO_BUCKET_AVATARS
+              valueFrom:
+                configMapKeyRef:
+                  name: feastfite-config
+                  key: MINIO_BUCKET_AVATARS
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3005
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3005
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: profile-service
+  namespace: feastfite
+spec:
+  selector:
+    app: profile-service
+  ports:
+    - name: http
+      port: 3005
+      targetPort: 3005

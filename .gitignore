@@ -35,3 +35,6 @@ Thumbs.db
 npm-debug.log*
 session-export-*
 *.zip
+
+# k8s secrets with real values (use secrets.template.yml instead)
+k8s/secrets.yml
