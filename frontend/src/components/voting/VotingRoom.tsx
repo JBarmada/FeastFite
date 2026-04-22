@@ -6,6 +6,7 @@ import { Lightbox } from '../ui/Lightbox';
 interface VotingRoomProps {
   sessionId: string;
   currentUserId: string;
+  territoryName?: string;
   onBack?: () => void;
   onAddDish?: () => void;
   onCompleted?: (session: VoteSession) => void;
@@ -13,7 +14,7 @@ interface VotingRoomProps {
 
 let socket: Socket | null = null;
 
-export function VotingRoom({ sessionId, currentUserId, onBack, onAddDish, onCompleted }: VotingRoomProps) {
+export function VotingRoom({ sessionId, currentUserId, territoryName, onBack, onAddDish, onCompleted }: VotingRoomProps) {
   const [session, setSession] = useState<VoteSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [votingFor, setVotingFor] = useState<string | null>(null);
@@ -116,7 +117,7 @@ export function VotingRoom({ sessionId, currentUserId, onBack, onAddDish, onComp
         <div className="vote-room-header">
           <div>
             <div className="eyebrow">Community Food Fight</div>
-            <h2 style={{ margin: 0, fontSize: '0.95rem' }}>{session.territoryId.slice(0, 8)}…</h2>
+            <h2 style={{ margin: 0, fontSize: '0.95rem' }}>{territoryName ?? session.territoryId.slice(0, 8) + '…'}</h2>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <span style={{

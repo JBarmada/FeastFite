@@ -170,6 +170,7 @@ export function VotingPage() {
                 <VotingRoom
                   sessionId={activeSession.id}
                   currentUserId={currentUserId}
+                  territoryName={territory.name}
                   onBack={() => navigate('/')}
                   onAddDish={() => setShowUploadForm(true)}
                 />
