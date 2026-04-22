@@ -32,7 +32,7 @@ services:
         paths:
           - /ws/vote
         strip_path: false
-        protocols: [ws, wss]
+        protocols: [http, https]
 
   - name: economy-service
     url: http://economy-service:3004
@@ -75,7 +75,7 @@ plugins:
     config:
       origins:
         - "http://localhost:5173"
-        - "https://feastfite.com"
+        - "https://feastfite-demo2.duckdns.org"
       methods:
         - GET
         - POST

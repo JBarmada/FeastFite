@@ -66,19 +66,8 @@ export function LockCountdown({ lockedUntil, ownerId }: Props) {
 
   return (
     <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '4px',
-        padding: '3px 10px',
-        borderRadius: '999px',
-        fontSize: '0.78rem',
-        fontWeight: 700,
-        letterSpacing: '0.02em',
-        background: bg,
-        color,
-        border: `1.5px solid ${border}`,
-      }}
+      className="ff-lock-pill"
+      style={{ background: bg, color, borderColor: border }}
     >
       {icon} {label}
     </span>

@@ -4,7 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { initDb } from './db.js';
 import { territoriesRouter } from './routes/territories.js';
-import { createAmqpConnection } from '@feastfite/shared';
+import { startAmqpConnector } from '@feastfite/shared';
 import { startVoteWinnerConsumer } from './consumers/voteWinner.js';
 
 const app = express();
@@ -21,11 +21,21 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/territory/territories', territoriesRouter);
 
+function startAmqpConsumerInBackground(): void {
+  startAmqpConnector({
+    logPrefix: '[territory-service][amqp]',
+    onConnect: async ({ channel }) => {
+      await startVoteWinnerConsumer(channel);
+    },
+    onDisconnect: async () => {
+      console.warn('[territory-service][amqp] vote winner consumer unavailable until reconnect');
+    },
+  });
+}
+
 async function start() {
   await initDb();
-
-  const { channel } = await createAmqpConnection();
-  await startVoteWinnerConsumer(channel);
+  startAmqpConsumerInBackground();
 
   app.listen(PORT, () => {
     console.info(`[${SERVICE_NAME}] listening on port ${PORT}`);

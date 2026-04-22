@@ -5,6 +5,7 @@ metadata:
   namespace: feastfite
 spec:
   replicas: 1
+  progressDeadlineSeconds: 1800
   selector:
     matchLabels:
       app: kong
@@ -41,11 +42,11 @@ spec:
               value: warn
           resources:
             requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
               cpu: 500m
-              memory: 512Mi
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
           readinessProbe:
             httpGet:
               path: /status
@@ -69,6 +70,8 @@ kind: Service
 metadata:
   name: kong
   namespace: feastfite
+  annotations:
+    cloud.google.com/backend-config: '{"ports": {"8000":"kong-backendconfig"}}'
 spec:
   selector:
     app: kong
@@ -79,3 +82,18 @@ spec:
     - name: admin
       port: 8001
       targetPort: 8001
+---
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: kong-backendconfig
+  namespace: feastfite
+spec:
+  healthCheck:
+    checkIntervalSec: 15
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+    type: HTTP
+    requestPath: /status
+    port: 8001

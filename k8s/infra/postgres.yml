@@ -34,6 +34,8 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
           volumeMounts:
@@ -94,6 +96,8 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
           volumeMounts:
@@ -154,6 +158,8 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
           volumeMounts:
@@ -214,6 +220,8 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
           volumeMounts:
@@ -274,6 +282,8 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
           volumeMounts:

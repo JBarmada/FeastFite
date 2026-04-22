@@ -34,15 +34,17 @@ spec:
             - containerPort: 15672
               name: management
           readinessProbe:
-            exec:
-              command: ["rabbitmq-diagnostics", "-q", "ping"]
-            initialDelaySeconds: 15
-            periodSeconds: 15
+            tcpSocket:
+              port: 5672
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
-            exec:
-              command: ["rabbitmq-diagnostics", "-q", "ping"]
-            initialDelaySeconds: 30
-            periodSeconds: 20
+            tcpSocket:
+              port: 5672
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
           volumeMounts:
             - name: data
               mountPath: /var/lib/rabbitmq
