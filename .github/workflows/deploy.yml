@@ -118,10 +118,8 @@ jobs:
           kubectl set image deployment/kong              kong=$REPO/kong:$SHA                      -n feastfite
           kubectl set image deployment/frontend          frontend=$REPO/frontend:$SHA              -n feastfite
 
-      - name: Force RabbitMQ onto latest StatefulSet revision
+      - name: Refresh RabbitMQ only when StatefulSet pod is stale
         run: |
-          kubectl rollout restart statefulset/rabbitmq -n feastfite
-
           current_revision="$(kubectl get statefulset rabbitmq -n feastfite -o jsonpath='{.status.currentRevision}')"
           update_revision="$(kubectl get statefulset rabbitmq -n feastfite -o jsonpath='{.status.updateRevision}')"
           pod_revision="$(kubectl get pod rabbitmq-0 -n feastfite -o jsonpath='{.metadata.labels.controller-revision-hash}' 2>/dev/null || true)"
@@ -130,9 +128,11 @@ jobs:
           echo "RabbitMQ StatefulSet update revision:  $update_revision"
           echo "RabbitMQ pod revision:                $pod_revision"
 
-          if [ "$pod_revision" != "$update_revision" ]; then
+          if [ -n "$pod_revision" ] && [ "$pod_revision" != "$update_revision" ]; then
             echo "Deleting stale rabbitmq-0 pod so the StatefulSet can recreate it from the latest template..."
             kubectl delete pod rabbitmq-0 -n feastfite --wait=false
+          else
+            echo "RabbitMQ pod is already on the latest StatefulSet revision."
           fi
 
       - name: Wait for rollouts to complete
@@ -140,7 +140,12 @@ jobs:
           failed=0
           for sts in rabbitmq; do
             echo "Waiting for statefulset/$sts..."
-            if ! kubectl rollout status statefulset/$sts -n feastfite --timeout=600s; then
+            timeout=600s
+            if [ "$sts" = "rabbitmq" ]; then
+              timeout=1800s
+            fi
+
+            if ! kubectl rollout status statefulset/$sts -n feastfite --timeout=$timeout; then
               failed=1
             fi
           done

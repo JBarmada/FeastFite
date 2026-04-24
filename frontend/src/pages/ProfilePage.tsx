@@ -7,19 +7,39 @@ import { voteApi } from '../api/voteApi';
 import { Lightbox } from '../components/ui/Lightbox';
 import type { Territory } from '@feastfite/shared';
 import { AUTH_DISABLED, DEV_USER_ID, DEV_FAKE_TOKEN } from '../config/devAuth';
+import { Panel } from '../components/ui/Panel';
+import { Monster } from '../components/ui/Monster';
+import { CandyPattern } from '../components/ui/CandyPattern';
+import { colors, playerColors } from '../styles/colors';
+import type { MonsterHat } from '../components/ui/Monster';
+
+const HAT_CYCLE: MonsterHat[] = ['burger', 'donut', 'taco', 'cone', 'sushi', 'ramen'];
+
+function hashToIndex(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h % 8;
+}
+
+function formatJoinDate(date: Date | string | null | undefined): string {
+  if (!date) return '';
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' }).toUpperCase().replace(' ', ' \'');
+}
 
 function reasonLabel(reason: string, territoryName?: string): string {
   const base = reason.split(':')[0] ?? reason;
   const loc = territoryName ? ` at ${territoryName}` : '';
   const map: Record<string, string> = {
-    vote_winner:      `🏆 Won a food fight${loc}`,
-    vote_participant: `⭐ Rated a dish${loc}`,
-    dish_rated:       `🍽️ Your dish was rated${loc}`,
-    territory_claim:  `🚩 Claimed a territory${loc}`,
-    signup_bonus:     '🎁 Welcome bonus',
-    streak_bonus:     '🔥 Streak bonus',
-    dev_seed_bonus:   '🛠️ Dev seed points',
-    shop_purchase:    '🛒 Shop purchase',
+    vote_winner:      `Won a food fight${loc}`,
+    vote_participant: `Rated a dish${loc}`,
+    dish_rated:       `Your dish was rated${loc}`,
+    territory_claim:  `Claimed a territory${loc}`,
+    signup_bonus:     'Welcome bonus',
+    streak_bonus:     'Streak bonus',
+    dev_seed_bonus:   'Dev seed points',
+    shop_purchase:    'Shop purchase',
   };
   return map[base] ?? reason;
 }
@@ -33,15 +53,17 @@ export function ProfilePage() {
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [territories, setTerritories] = useState<Territory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [territoryNames, setTerritoryNames] = useState<Record<string, string>>({});
 
   const [submissions, setSubmissions] = useState<MySubmission[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [loadingGallery, setLoadingGallery] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [selectedHat, setSelectedHat] = useState<MonsterHat>('donut');
 
   const displayName = AUTH_DISABLED ? 'Monster Grubby' : (user?.username ?? 'Food Monster');
+  const monsterColor = playerColors[hashToIndex(userId || 'default')].solid;
+  const joinDate = formatJoinDate(user?.createdAt);
 
   useEffect(() => {
     if (!userId) return;
@@ -65,7 +87,7 @@ export function ProfilePage() {
           })
           .catch(() => {});
       })
-      .catch((e) => { console.error(e); setError('Could not load profile data.'); })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [userId, authToken]);
 
@@ -87,219 +109,231 @@ export function ProfilePage() {
   }, [userId, authToken]);
 
   return (
-    <div style={{ minHeight: '100vh' }}>
+    <div style={{ minHeight: '100vh', background: colors.bg, position: 'relative' }}>
       {lightboxSrc && <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
-      <Navbar />
-      <div style={{ paddingTop: '40px' }}>
-        <div className="page-card">
+      <CandyPattern opacity={0.15} style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }} />
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <Navbar />
+        <div style={{ padding: '20px 24px 40px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 20, alignItems: 'start', maxWidth: 1200, margin: '0 auto' }}>
 
-          {/* Avatar + name */}
-          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <div style={{
-              width: '80px', height: '80px', borderRadius: '50%',
-              background: 'rgba(255,255,255,0.5)',
-              border: '3px solid rgba(255,255,255,0.8)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '3rem', margin: '0 auto 10px',
-              boxShadow: '0 4px 16px rgba(160,32,200,0.2)',
-            }}>
-              👾
-            </div>
-            <h1 style={{
-              margin: '0 0 4px', fontFamily: 'var(--font-display)',
-              fontSize: '1.8rem', color: '#2D1040',
-            }}>
-              User: {displayName}
-            </h1>
-            {!AUTH_DISABLED && user?.email && (
-              <p style={{ color: '#7A5490', margin: 0, fontSize: '0.85rem' }}>{user.email}</p>
-            )}
-          </div>
+            {/* ── Left: Monster card ── */}
+            <Panel color={colors.primary} pad={20} style={{ background: `linear-gradient(180deg, white, ${colors.primaryLight})` }}>
+              {/* Monster showcase */}
+              <div style={{
+                position: 'relative', height: 200, borderRadius: 18,
+                background: `radial-gradient(circle at 50% 30%, ${colors.secondaryLight}, ${colors.primaryLight})`,
+                border: `3px solid ${colors.secondary}`, overflow: 'hidden',
+                display: 'grid', placeItems: 'center',
+              }}>
+                <CandyPattern opacity={0.4} style={{ position: 'absolute', inset: 0 }} />
+                <div style={{ position: 'relative', filter: 'drop-shadow(0 6px 12px rgba(45,16,64,0.3))' }}>
+                  <Monster size={150} color={monsterColor} hat={selectedHat} mood="happy" />
+                </div>
+                <div style={{
+                  position: 'absolute', bottom: 10, left: 10,
+                  fontFamily: 'var(--font-mono)', fontSize: 9,
+                  color: colors.textSecondary, background: 'white',
+                  padding: '3px 7px', borderRadius: 6,
+                }}>
+                  LVL {territories.length + 1} GRUB
+                </div>
+              </div>
 
-          {error && (
-            <div style={{ background: 'rgba(255,80,120,0.15)', border: '1.5px solid rgba(255,80,120,0.4)', borderRadius: '12px', padding: '12px 16px', marginBottom: '20px', color: '#C73060', fontSize: '0.9rem', textAlign: 'center' }}>
-              {error}
-            </div>
-          )}
+              {/* Name */}
+              <div style={{ marginTop: 14, textAlign: 'center' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, color: colors.textPrimary }}>
+                  {displayName}
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary, letterSpacing: '0.08em', marginTop: 3 }}>
+                  @{displayName.replace(/\s+/g, '').toUpperCase()} · JOINED {joinDate}
+                </div>
+              </div>
 
-          {/* Two-column layout */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '20px',
-            alignItems: 'start',
-          }}>
-            {/* ── Left: Stats ── */}
-            <div style={{ background: 'rgba(255,255,255,0.45)', borderRadius: '20px', padding: '20px', border: '1.5px solid rgba(255,255,255,0.7)' }}>
-              <h2 style={{ margin: '0 0 16px', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 900, color: '#2D1040', textAlign: 'center', letterSpacing: '0.08em' }}>
-                STATS
-              </h2>
-
-              {/* Stat cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '20px' }}>
+              {/* Stats grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 14 }}>
                 {[
-                  { icon: '🏴', label: 'Total Territories\nClaimed', value: loading ? '…' : String(territories.length) },
-                  { icon: '🪙', label: 'Current Points', value: loading ? '…' : `${(stats?.balance ?? 0).toLocaleString()} pts` },
-                  { icon: '🔥', label: 'Daily Streak', value: loading ? '…' : `${stats?.streak ?? 0}d` },
-                ].map((stat) => (
-                  <div key={stat.label} style={{
-                    background: 'rgba(255,255,255,0.6)',
-                    border: '1.5px solid rgba(255,255,255,0.8)',
-                    borderRadius: '14px',
-                    padding: '12px 8px',
-                    textAlign: 'center',
+                  ['BLOCKS', loading ? '…' : String(territories.length)],
+                  ['WINS',   (loading || loadingGallery) ? '…' : String(submissions.filter((s) => s.isWinner).length)],
+                  ['STREAK', loading ? '…' : `🔥 ${stats?.streak ?? 0}`],
+                ].map(([k, v]) => (
+                  <div key={k} style={{
+                    background: 'white', borderRadius: 12,
+                    border: `2px solid ${colors.border}`,
+                    padding: '10px 4px', textAlign: 'center',
                   }}>
-                    <div style={{ fontSize: '1.5rem' }}>{stat.icon}</div>
-                    <div style={{ fontWeight: 900, fontSize: '1.1rem', color: '#2D1040', marginTop: '4px' }}>
-                      {stat.value}
-                    </div>
-                    <div style={{ fontSize: '0.62rem', color: '#7A5490', marginTop: '2px', whiteSpace: 'pre-line', lineHeight: 1.3 }}>
-                      {stat.label}
-                    </div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, color: colors.primary, lineHeight: 1 }}>{v}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: colors.textSecondary, marginTop: 4, letterSpacing: '0.06em' }}>{k}</div>
                   </div>
                 ))}
               </div>
 
-              {/* Territories */}
-              {territories.length > 0 && (
-                <div style={{ marginBottom: '16px' }}>
-                  <h3 style={{ fontSize: '0.82rem', fontWeight: 800, color: '#2D1040', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    🏴 Your Territories
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {territories.map((t) => (
-                      <div key={t.id} style={{
-                        display: 'flex', alignItems: 'center', gap: '10px',
-                        padding: '10px 12px', borderRadius: '12px',
-                        background: 'rgba(255,255,255,0.6)', border: '1.5px solid rgba(255,255,255,0.8)',
-                      }}>
-                        <div style={{
-                          width: '32px', height: '32px', borderRadius: '50%',
-                          background: 'linear-gradient(135deg, #FFD700, #FF9E00)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '1rem', flexShrink: 0,
-                        }}>🏆</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#2D1040', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {t.name}
+              {/* Hat picker */}
+              <div style={{ marginTop: 14, padding: 12, background: 'white', borderRadius: 14, border: `2px solid ${colors.border}` }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, color: colors.textPrimary, marginBottom: 8 }}>
+                  Dress up your grub
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {HAT_CYCLE.map((h) => (
+                    <button
+                      key={h}
+                      onClick={() => setSelectedHat(h)}
+                      style={{
+                        width: 44, height: 44, borderRadius: 10, cursor: 'pointer', padding: 0, border: 'none',
+                        background: h === selectedHat ? colors.primaryLight : colors.surfaceRaised,
+                        outline: h === selectedHat ? `2px solid ${colors.primary}` : `2px solid ${colors.border}`,
+                        display: 'grid', placeItems: 'center',
+                      }}
+                    >
+                      <Monster size={32} color={monsterColor} hat={h} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Points balance */}
+              <div style={{ marginTop: 14, padding: '10px 14px', background: 'white', borderRadius: 12, border: `2px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary, letterSpacing: '0.06em' }}>COINS</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.points }}>
+                  {loading ? '…' : (stats?.balance ?? 0).toLocaleString()}
+                </div>
+              </div>
+            </Panel>
+
+            {/* ── Right column ── */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+              {/* Recent fites + Streak */}
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
+                {/* Recent fites */}
+                <Panel color={colors.accent} pad={16}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.textPrimary, marginBottom: 10 }}>Recent grub fites</div>
+                  {loading ? (
+                    <div style={{ color: colors.textSecondary, fontSize: 13, textAlign: 'center', padding: '20px 0' }}>Loading…</div>
+                  ) : ledger.filter((e) => e.reason.startsWith('vote_')).length === 0 ? (
+                    <div style={{ color: colors.textSecondary, fontSize: 13, textAlign: 'center', padding: '20px 0' }}>No fites yet — go claim a territory!</div>
+                  ) : (
+                    ledger.filter((e) => e.reason.startsWith('vote_')).slice(0, 5).map((entry, i) => {
+                      const win = entry.reason.startsWith('vote_winner');
+                      const tName = entry.territoryId ? (territoryNames[entry.territoryId] ?? 'Unknown spot') : 'Unknown spot';
+                      return (
+                        <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: i > 0 ? `1px solid ${colors.border}` : 'none' }}>
+                          <div style={{ width: 36, height: 36, borderRadius: 10, background: win ? colors.success : colors.error, color: 'white', fontFamily: 'var(--font-display)', fontSize: 12, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                            {win ? 'W' : 'L'}
                           </div>
-                          {t.capturedAt && (
-                            <div style={{ fontSize: '0.68rem', color: '#7A5490' }}>
-                              Claimed {new Date(t.capturedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, color: colors.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tName}</div>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary }}>
+                              {new Date(entry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                             </div>
-                          )}
+                          </div>
+                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: entry.delta > 0 ? colors.success : colors.error, flexShrink: 0 }}>
+                            {entry.delta > 0 ? '+' : ''}{entry.delta}
+                          </div>
                         </div>
-                        <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '3px 8px', borderRadius: '999px', background: 'rgba(160,32,200,0.12)', color: '#A020C8', flexShrink: 0 }}>
-                          Conquered
-                        </span>
-                      </div>
+                      );
+                    })
+                  )}
+                </Panel>
+
+                {/* Streak */}
+                <Panel color={colors.warning} pad={16}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.textPrimary, marginBottom: 10 }}>Streak</div>
+                  <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 52, color: colors.warning, lineHeight: 1 }}>
+                      🔥{loading ? '…' : (stats?.streak ?? 0)}
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary, marginTop: 4 }}>DAYS IN A ROW</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 3, justifyContent: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                    {Array.from({ length: Math.min(stats?.streak ?? 0, 14) }).map((_, i) => (
+                      <div key={i} style={{ width: 12, height: 12, borderRadius: 3, background: colors.warning, boxShadow: '0 2px 0 #D68A00' }} />
+                    ))}
+                    {Array.from({ length: Math.max(0, 14 - (stats?.streak ?? 0)) }).map((_, i) => (
+                      <div key={i} style={{ width: 12, height: 12, borderRadius: 3, background: colors.border }} />
                     ))}
                   </div>
+                  <div style={{ fontFamily: 'var(--font-sans)', fontSize: 11, color: colors.textSecondary, textAlign: 'center', marginTop: 10 }}>
+                    Claim one block a day to keep it warm.
+                  </div>
+                </Panel>
+              </div>
+
+              {/* Photo gallery */}
+              <Panel color={colors.primary} pad={16}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.textPrimary, marginBottom: 12 }}>
+                  {displayName}&apos;s Best Dishes
                 </div>
-              )}
+                {loadingGallery ? (
+                  <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '20px 0', fontSize: 13 }}>Loading gallery…</div>
+                ) : submissions.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: colors.textSecondary }}>
+                    <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>📭</div>
+                    <div style={{ fontSize: 13 }}>No photos yet — go eat somewhere and claim a territory!</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+                    {submissions.map((entry) => {
+                      const photoUrl = entry.photoKey ? (photoUrls[entry.photoKey] ?? null) : null;
+                      return (
+                        <div
+                          key={entry.id}
+                          onClick={() => photoUrl && setLightboxSrc(photoUrl)}
+                          style={{
+                            borderRadius: 14, overflow: 'hidden', cursor: photoUrl ? 'zoom-in' : 'default',
+                            border: `2px solid ${entry.isWinner ? colors.warning : colors.border}`,
+                            background: entry.isWinner ? '#FFF8E8' : 'white',
+                          }}
+                        >
+                          <div style={{ aspectRatio: '1', background: colors.surfaceRaised, overflow: 'hidden' }}>
+                            {photoUrl ? (
+                              <img src={photoUrl} alt="Submission" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                            ) : (
+                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>🍽️</div>
+                            )}
+                          </div>
+                          <div style={{ padding: '6px 8px' }}>
+                            <div style={{ fontFamily: 'var(--font-display)', fontSize: 11, color: colors.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {entry.territoryName}
+                            </div>
+                            {entry.isWinner && (
+                              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: colors.warning, marginTop: 2 }}>👑 WINNER</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Panel>
 
               {/* Points history */}
-              <div>
-                <h3 style={{ fontSize: '0.82rem', fontWeight: 800, color: '#2D1040', margin: '0 0 10px' }}>
-                  📋 Points History
-                </h3>
+              <Panel color={colors.border} pad={16} style={{ background: 'white' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.textPrimary, marginBottom: 10 }}>Points History</div>
                 {loading ? (
-                  <p style={{ color: '#7A5490', textAlign: 'center', fontSize: '0.85rem' }}>Loading…</p>
+                  <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '16px 0', fontSize: 13 }}>Loading…</div>
                 ) : ledger.length === 0 ? (
-                  <p style={{ color: '#7A5490', textAlign: 'center', fontSize: '0.85rem' }}>No activity yet — go claim a territory!</p>
+                  <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '16px 0', fontSize: 13 }}>No activity yet — go claim a territory!</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {ledger.map((entry) => (
-                      <div key={entry.id} style={{
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                        padding: '8px 12px', borderRadius: '10px',
-                        background: 'rgba(255,255,255,0.6)', border: '1.5px solid rgba(255,255,255,0.8)',
-                      }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {ledger.map((entry, i) => (
+                      <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i > 0 ? `1px solid ${colors.border}` : 'none' }}>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#2D1040' }}>
+                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, color: colors.textPrimary }}>
                             {reasonLabel(entry.reason, entry.territoryId ? territoryNames[entry.territoryId] : undefined)}
                           </div>
-                          <div style={{ fontSize: '0.65rem', color: '#7A5490' }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary }}>
                             {new Date(entry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                           </div>
                         </div>
-                        <span style={{ fontWeight: 800, fontSize: '0.88rem', color: entry.delta > 0 ? '#1A7A4A' : '#C73060', flexShrink: 0 }}>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: entry.delta > 0 ? colors.success : colors.error, flexShrink: 0 }}>
                           {entry.delta > 0 ? '+' : ''}{entry.delta} pts
-                        </span>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
-            </div>
-
-            {/* ── Right: Gallery ── */}
-            <div style={{ background: 'rgba(255,255,255,0.45)', borderRadius: '20px', padding: '20px', border: '1.5px solid rgba(255,255,255,0.7)' }}>
-              <h2 style={{ margin: '0 0 16px', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 900, color: '#2D1040', textAlign: 'center', letterSpacing: '0.08em' }}>
-                GALLERY
-              </h2>
-              <h3 style={{ margin: '0 0 14px', fontSize: '0.88rem', fontWeight: 700, color: '#2D1040', textAlign: 'center' }}>
-                {displayName}&apos;s Best Dishes
-              </h3>
-
-              {loadingGallery ? (
-                <p style={{ textAlign: 'center', color: '#7A5490', padding: '20px 0', fontSize: '0.85rem' }}>Loading gallery…</p>
-              ) : submissions.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '30px 20px', color: '#7A5490' }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>📭</div>
-                  <p style={{ fontSize: '0.85rem' }}>No photos yet — go eat somewhere and claim a territory!</p>
-                </div>
-              ) : (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '8px',
-                }}>
-                  {submissions.map((entry) => {
-                    const photoUrl = entry.photoKey ? (photoUrls[entry.photoKey] ?? null) : null;
-                    return (
-                      <div
-                        key={entry.id}
-                        style={{
-                          borderRadius: '12px', overflow: 'hidden',
-                          background: entry.isWinner ? 'rgba(255,244,230,0.8)' : 'rgba(255,255,255,0.6)',
-                          border: `1.5px solid ${entry.isWinner ? '#FFD8A8' : 'rgba(255,255,255,0.8)'}`,
-                          cursor: photoUrl ? 'zoom-in' : 'default',
-                        }}
-                        onClick={() => photoUrl && setLightboxSrc(photoUrl)}
-                      >
-                        <div style={{ aspectRatio: '1', background: '#F5E8FF', overflow: 'hidden', position: 'relative' }}>
-                          {photoUrl ? (
-                            <img src={photoUrl} alt="Submission" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                          ) : (
-                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>🍽️</div>
-                          )}
-                        </div>
-                        <div style={{ padding: '6px 8px' }}>
-                          <div style={{ fontWeight: 700, fontSize: '0.72rem', color: '#2D1040', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {entry.territoryName}
-                          </div>
-                          <div style={{ fontSize: '0.68rem', color: '#FF9E5E', fontWeight: 700 }}>
-                            {entry.avgRating != null ? `Top Dish: ${entry.avgRating.toFixed(2)} stars` : '—'}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Edit Profile button */}
-              <div style={{ marginTop: '20px', textAlign: 'center' }}>
-                <button style={{
-                  padding: '10px 32px', borderRadius: '999px', border: 'none',
-                  background: 'linear-gradient(135deg, #FF6FA3, #FF9E8C)',
-                  color: '#fff', fontWeight: 800, fontSize: '0.95rem',
-                  cursor: 'pointer', boxShadow: '0 4px 14px rgba(255,111,145,0.3)',
-                }}>
-                  Edit Profile
-                </button>
-              </div>
+              </Panel>
             </div>
           </div>
         </div>

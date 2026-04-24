@@ -132,6 +132,27 @@
   --shadow-glow-secondary: 0 0 20px rgba(255,  79, 163, 0.45);
   --shadow-glow-accent:    0 0 20px rgba(  0, 200, 224, 0.45);
 
+  /* ── Chunky "stacked" candy shadows (opaque, no blur under element) ── */
+  /* Pattern: 0 {N}px 0 <darker-tint>, 0 {N+4}px 14px rgba(45,16,64,0.20)  */
+  --shadow-candy-panel: 0 6px 0 #D0B4E0, 0 10px 20px rgba(160,32,200,0.12);
+  --shadow-candy-nav:   0 4px 0 #7A1A99;
+  --shadow-candy-btn-sm: 0 3px 0 rgba(45,16,64,0.28);
+  --shadow-candy-btn-md: 0 4px 0 rgba(45,16,64,0.28), 0 8px 14px rgba(45,16,64,0.20);
+  --shadow-candy-btn-lg: 0 6px 0 rgba(45,16,64,0.28), 0 10px 14px rgba(45,16,64,0.20);
+  --shadow-candy-btn-xl: 0 8px 0 rgba(45,16,64,0.28), 0 12px 18px rgba(45,16,64,0.20);
+  --shadow-candy-coin:  0 2px 0 #B87300;
+  --shadow-candy-zoom:  0 3px 0 #7A1A99;
+
+  /* ── Player color box-shadows (for leaderboard podium, vote leading) ── */
+  --shadow-player-cherry:    0 4px 0 #B02840;
+  --shadow-player-grape:     0 4px 0 #7A1A99;
+  --shadow-player-bubblegum: 0 4px 0 #C0306E;
+  --shadow-player-blueberry: 0 4px 0 #2A50CC;
+  --shadow-player-orange:    0 4px 0 #CC5A00;
+  --shadow-player-lemon:     0 4px 0 #CCA800;
+  --shadow-player-lime:      0 4px 0 #2A8A3A;
+  --shadow-player-cotton:    0 4px 0 #00AABF;
+
   /* ── Transitions ─────────────────────────────────────────────── */
   --transition-fast:   100ms ease;
   --transition-base:   200ms ease;
