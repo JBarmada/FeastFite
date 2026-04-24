@@ -18,6 +18,7 @@ export interface Territory {
   ownerType: 'user' | 'clan' | null;
   capturedAt: Date | null;
   lockedUntil: Date | null;
+  shieldedUntil: Date | null;
   dishPhotoKey: string | null;
   updatedAt: Date;
 }

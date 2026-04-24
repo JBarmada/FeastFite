@@ -30,10 +30,21 @@ export async function awardPoints(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    let actualDelta = delta;
+    if (delta > 0) {
+      const { rows: boostRows } = await client.query(
+        `SELECT 1 FROM user_boosts
+         WHERE user_id = $1 AND item_type = 'double_points' AND expires_at > NOW()`,
+        [userId]
+      );
+      if (boostRows.length > 0) actualDelta = delta * 2;
+    }
+
     const { rowCount } = await client.query(
       `INSERT INTO ledger_entries (user_id, delta, reason, reference_id, restaurant_id)
        VALUES ($1, $2, $3, $4, $5)`,
-      [userId, delta, reason, referenceId, restaurantId ?? null]
+      [userId, actualDelta, reason, referenceId, restaurantId ?? null]
     );
 
     if ((rowCount ?? 0) > 0) {

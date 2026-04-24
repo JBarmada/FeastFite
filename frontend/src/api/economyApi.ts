@@ -48,4 +48,21 @@ export const economyApi = {
     );
     return data;
   },
+
+  async getActiveBoosts(token: string): Promise<{ boosts: { itemType: string; expiresAt: string }[] }> {
+    const { data } = await client.get<{ boosts: { itemType: string; expiresAt: string }[] }>(
+      '/boosts/active',
+      { headers: authHeader(token) }
+    );
+    return data;
+  },
+
+  async activateBoost(token: string, itemId: string): Promise<{ expiresAt: string }> {
+    const { data } = await client.post<{ success: boolean; expiresAt: string }>(
+      '/boosts/activate',
+      { itemId },
+      { headers: authHeader(token) }
+    );
+    return { expiresAt: data.expiresAt };
+  },
 };

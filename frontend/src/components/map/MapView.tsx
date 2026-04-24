@@ -13,13 +13,14 @@ import { TerritoryPanel } from './TerritoryPanel';
 
 function polygonStyle(territory: Territory, isSelected: boolean): PathOptions {
   const fill = ownerColor(territory.ownerId);
+  const isShielded = territory.shieldedUntil && new Date(territory.shieldedUntil) > new Date();
 
   return {
     fillColor: fill,
     fillOpacity: isSelected ? 0.88 : 0.58,
-    color: isSelected ? '#1A0040' : '#5B0EA6',
-    weight: isSelected ? 4 : 2,
-    dashArray: isSelected ? undefined : '6 4',
+    color: isShielded ? '#FFD700' : (isSelected ? '#1A0040' : '#5B0EA6'),
+    weight: isShielded ? 4 : (isSelected ? 4 : 2),
+    dashArray: isShielded ? '1 0' : (isSelected ? undefined : '6 4'),
   };
 }
 

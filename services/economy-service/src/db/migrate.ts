@@ -32,6 +32,13 @@ export async function runMigrations(): Promise<void> {
       quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
       PRIMARY KEY (user_id, item_id)
     );
+
+    CREATE TABLE IF NOT EXISTS user_boosts (
+      user_id    UUID NOT NULL,
+      item_type  TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY (user_id, item_type)
+    );
   `);
 
   // Safe column additions for existing deployments
