@@ -211,11 +211,6 @@ economyRouter.post('/inventory/use', requireAuth, async (req: Request, res: Resp
     return;
   }
 
-  if (itemId !== 'battering_ram') {
-    res.status(400).json({ error: 'Only the battering ram can be used from this endpoint' });
-    return;
-  }
-
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -261,6 +256,74 @@ economyRouter.post('/inventory/use', requireAuth, async (req: Request, res: Resp
     await client.query('ROLLBACK');
     console.error('[economy] use item failed:', err);
     res.status(500).json({ error: 'Could not use item' });
+  } finally {
+    client.release();
+  }
+});
+
+// ── GET /boosts/active ────────────────────────────────────────────
+// Returns the user's currently active timed boosts.
+
+economyRouter.get('/boosts/active', requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as Request & { userId: string }).userId;
+  try {
+    const { rows } = await pool.query<{ item_type: string; expires_at: string }>(
+      `SELECT item_type, expires_at FROM user_boosts WHERE user_id = $1 AND expires_at > NOW()`,
+      [userId]
+    );
+    res.json({ boosts: rows.map((r) => ({ itemType: r.item_type, expiresAt: r.expires_at })) });
+  } catch (err) {
+    console.error('[economy] boosts/active failed:', err);
+    res.status(500).json({ error: 'Failed to load active boosts' });
+  }
+});
+
+// ── POST /boosts/activate ─────────────────────────────────────────
+// Consumes one double_points from inventory and activates a 1-hour boost.
+
+economyRouter.post('/boosts/activate', requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as Request & { userId: string }).userId;
+  const itemId = (req.body as { itemId?: string }).itemId;
+  if (itemId !== 'double_points') {
+    res.status(400).json({ error: 'Only double_points can be activated as a boost' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1::text))', [userId]);
+
+    const { rows: invRows } = await client.query<{ quantity: number }>(
+      `SELECT quantity FROM user_inventory WHERE user_id = $1 AND item_id = $2 FOR UPDATE`,
+      [userId, itemId]
+    );
+    const qty = invRows[0]?.quantity ?? 0;
+    if (qty < 1) {
+      await client.query('ROLLBACK');
+      res.status(400).json({ error: 'Not in inventory' });
+      return;
+    }
+
+    await client.query(
+      `UPDATE user_inventory SET quantity = quantity - 1 WHERE user_id = $1 AND item_id = $2`,
+      [userId, itemId]
+    );
+
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await client.query(
+      `INSERT INTO user_boosts (user_id, item_type, expires_at)
+       VALUES ($1, 'double_points', $2)
+       ON CONFLICT (user_id, item_type) DO UPDATE SET expires_at = EXCLUDED.expires_at`,
+      [userId, expiresAt]
+    );
+
+    await client.query('COMMIT');
+    res.json({ success: true, expiresAt });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[economy] boost activate failed:', err);
+    res.status(500).json({ error: 'Could not activate boost' });
   } finally {
     client.release();
   }

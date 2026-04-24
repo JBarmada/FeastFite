@@ -30,6 +30,22 @@ export async function startVoteWinnerConsumer(channel: Channel): Promise<void> {
     const { territoryId, winnerId, winnerPhotoKey, winnerName, sessionId, candidates } = event;
 
     try {
+      // Check if the territory is currently shielded
+      const { rows: shieldRows } = await pool.query<{ shielded_until: string | null }>(
+        `SELECT shielded_until FROM territories WHERE id = $1`,
+        [territoryId]
+      );
+      const shieldedUntil = shieldRows[0]?.shielded_until;
+      const isShielded = shieldedUntil && new Date(shieldedUntil) > new Date();
+
+      if (isShielded) {
+        console.info(
+          `[voteWinner] territory ${territoryId} is shielded until ${shieldedUntil} — ownership change blocked`
+        );
+        channel.ack(msg);
+        return;
+      }
+
       await pool.query(
         `UPDATE territories
             SET owner_id       = $1,

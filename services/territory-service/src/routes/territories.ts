@@ -49,6 +49,7 @@ function rowToTerritory(row: Record<string, unknown>) {
     ownerType:     row['owner_type']     ?? null,
     capturedAt:    row['captured_at']    ?? null,
     lockedUntil:   row['locked_until']   ?? null,
+    shieldedUntil: row['shielded_until'] ?? null,
     dishPhotoKey:  row['dish_photo_key'] ?? null,
     updatedAt:     row['updated_at'],
   };
@@ -73,7 +74,7 @@ territoriesRouter.get('/', async (req: Request, res: Response) => {
 
   const { rows } = await pool.query(
     `SELECT id, name, geojson, owner_id, owner_name, owner_type,
-            captured_at, locked_until, dish_photo_key, updated_at
+            captured_at, locked_until, shielded_until, dish_photo_key, updated_at
      FROM territories
      WHERE ST_Intersects(
        geom,
@@ -92,7 +93,7 @@ territoriesRouter.get('/owned', requireAuth, async (req: Request, res: Response)
   const userId = (req as Request & { userId: string }).userId;
   const { rows } = await pool.query(
     `SELECT id, name, geojson, owner_id, owner_name, owner_type,
-            captured_at, locked_until, dish_photo_key, updated_at
+            captured_at, locked_until, shielded_until, dish_photo_key, updated_at
      FROM territories WHERE owner_id = $1`,
     [userId],
   );
@@ -138,7 +139,7 @@ territoriesRouter.get('/my-history', requireAuth, async (req: Request, res: Resp
 territoriesRouter.get('/:id', async (req: Request, res: Response) => {
   const { rows } = await pool.query(
     `SELECT id, name, geojson, owner_id, owner_name, owner_type,
-            captured_at, locked_until, dish_photo_key, updated_at
+            captured_at, locked_until, shielded_until, dish_photo_key, updated_at
      FROM territories WHERE id = $1`,
     [req.params['id']],
   );
@@ -160,7 +161,7 @@ territoriesRouter.post('/:id/claim', requireAuth, async (req: Request, res: Resp
   const { photoKey, displayName } = (req.body ?? {}) as { photoKey?: string; displayName?: string };
 
   const { rows } = await pool.query(
-    `SELECT id, owner_id, owner_name FROM territories WHERE id = $1`,
+    `SELECT id, owner_id, owner_name, shielded_until FROM territories WHERE id = $1`,
     [req.params['id']],
   );
 
@@ -169,7 +170,19 @@ territoriesRouter.post('/:id/claim', requireAuth, async (req: Request, res: Resp
     return;
   }
 
-  const territory = rows[0] as { id: string; owner_id: string | null; owner_name: string | null };
+  const territory = rows[0] as { id: string; owner_id: string | null; owner_name: string | null; shielded_until: string | null };
+
+  // Block self-contesting
+  if (territory.owner_id && territory.owner_id === userId) {
+    res.status(409).json({ error: 'You already own this territory.' });
+    return;
+  }
+
+  // Block challenges on shielded territories
+  if (territory.owner_id && territory.shielded_until && new Date(territory.shielded_until) > new Date()) {
+    res.status(423).json({ error: 'This territory is shielded — challenges are blocked until the shield expires.', shieldedUntil: territory.shielded_until });
+    return;
+  }
 
   // Uncontested claim — save dish photo and owner immediately
   if (!territory.owner_id) {
@@ -271,12 +284,57 @@ territoriesRouter.get('/:id/history', async (req: Request, res: Response) => {
   });
 });
 
+// ── POST /territories/:id/shield ─────────────────────────────────────────────
+// Consumes one Territory Shield from inventory and protects the territory for 24h.
+
+territoriesRouter.post('/:id/shield', requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as Request & { userId: string }).userId;
+
+  const { rows } = await pool.query(
+    `SELECT id, owner_id FROM territories WHERE id = $1`,
+    [req.params['id']],
+  );
+
+  if (rows.length === 0) {
+    res.status(404).json({ error: 'Territory not found' });
+    return;
+  }
+
+  const territory = rows[0] as { id: string; owner_id: string | null };
+  if (territory.owner_id !== userId) {
+    res.status(403).json({ error: 'You can only shield territories you own' });
+    return;
+  }
+
+  try {
+    await axios.post(
+      `${ECONOMY_SERVICE_URL}/api/economy/inventory/use`,
+      { itemId: 'territory_shield' },
+      { headers: { Authorization: req.headers.authorization } },
+    );
+  } catch (err) {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+    const msg = status === 400
+      ? 'Buy a Territory Shield in the shop first'
+      : 'Economy service unavailable';
+    res.status(status === 400 ? 402 : 502).json({ error: msg });
+    return;
+  }
+
+  await pool.query(
+    `UPDATE territories
+        SET shielded_until = NOW() + INTERVAL '1 day', updated_at = NOW()
+      WHERE id = $1`,
+    [territory.id],
+  );
+
+  res.json({ success: true, itemUsed: 'territory_shield' });
+});
+
 // ── POST /territories/:id/battering-ram ───────────────────────────────────────
 // Deducts points from economy-service and clears the lock.
 
 territoriesRouter.post('/:id/battering-ram', requireAuth, async (req: Request, res: Response) => {
-  const userId = (req as Request & { userId: string }).userId;
-
   const { rows } = await pool.query(
     `SELECT id, locked_until FROM territories WHERE id = $1`,
     [req.params['id']],

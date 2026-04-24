@@ -114,4 +114,21 @@ export const territoryApi = {
     );
     return data;
   },
+
+  /** Apply a Territory Shield from inventory to protect a territory you own for 24h */
+  async shield(id: string, token: string): Promise<{ success: boolean; itemUsed: string }> {
+    const { data } = await client.post<{ success: boolean; itemUsed: string }>(
+      `/territories/${id}/shield`,
+      {},
+      { headers: authHeader(token) },
+    );
+    return data;
+  },
+
+  /** Fetch all territories in the USC Village area (useful for finding locked ones) */
+  async getAll(): Promise<Territory[]> {
+    const bbox = '-118.290,34.020,-118.275,34.030';
+    const { data } = await client.get<Territory[]>('/territories', { params: { bbox } });
+    return data;
+  },
 };

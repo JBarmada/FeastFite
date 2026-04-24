@@ -143,10 +143,9 @@ export async function initDb(): Promise<void> {
     );
   `);
 
-  // Add owner_name if it doesn't exist yet (safe migration)
-  await pool.query(`
-    ALTER TABLE territories ADD COLUMN IF NOT EXISTS owner_name TEXT;
-  `);
+  // Safe column additions for existing deployments
+  await pool.query(`ALTER TABLE territories ADD COLUMN IF NOT EXISTS owner_name TEXT;`);
+  await pool.query(`ALTER TABLE territories ADD COLUMN IF NOT EXISTS shielded_until TIMESTAMPTZ;`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS claim_history (
