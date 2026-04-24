@@ -10,6 +10,7 @@ import { MAP_CONFIG, TILE_PROVIDER } from '../../config/mapConfig';
 import { territoryApi, type BBox } from '../../api/territoryApi';
 import { getPlayerColorByIndex, playerColors, territoryColors, colors } from '../../styles/colors';
 import { TerritoryPanel } from './TerritoryPanel';
+import { DEV_TERRITORIES } from '../../config/devTerritories';
 import type { MonsterHat } from '../ui/Monster';
 
 function hashToIndex(id: string): number {
@@ -84,10 +85,9 @@ function polygonStyle(territory: Territory, isSelected: boolean): PathOptions {
 interface LoaderProps {
   onLoad: (territories: Territory[]) => void;
   refreshKey?: number;
-  onError: (msg: string | null) => void;
 }
 
-function BBoxLoader({ onLoad, refreshKey, onError }: LoaderProps) {
+function BBoxLoader({ onLoad, refreshKey }: LoaderProps) {
   const map = useMap();
 
   const load = useCallback(async () => {
@@ -95,13 +95,16 @@ function BBoxLoader({ onLoad, refreshKey, onError }: LoaderProps) {
     const bbox: BBox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
     try {
       const data = await territoryApi.getByBbox(bbox);
-      onError(null);
-      onLoad(data);
+      if (data.length > 0) {
+        onLoad(data);
+      } else {
+        onLoad(DEV_TERRITORIES);
+      }
     } catch {
-      onLoad([]);
-      onError('Could not load territories from backend.');
+      // territory-service not running — show seed territories for dev preview
+      onLoad(DEV_TERRITORIES);
     }
-  }, [map, onLoad, onError]);
+  }, [map, onLoad]);
 
   useEffect(() => {
     load();
@@ -214,7 +217,7 @@ function ZoomControls({ map }: { map: LMap | null }) {
 // ── MapView ───────────────────────────────────────────────────────────────────
 
 interface MapViewProps {
-  onClaim: (territory: Territory, intent: 'claim' | 'vote' | 'battering-ram') => void;
+  onClaim: (territory: Territory) => void;
   refreshKey?: number;
 }
 
@@ -222,13 +225,6 @@ export function MapView({ onClaim, refreshKey }: MapViewProps) {
   const [territories, setTerritories] = useState<Territory[]>([]);
   const [selected, setSelected] = useState<Territory | null>(null);
   const [mapInstance, setMapInstance] = useState<LMap | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!selected) return;
-    const fresh = territories.find((t) => t.id === selected.id) ?? null;
-    setSelected(fresh);
-  }, [territories, selected?.id]);
 
   return (
     <div className="ff-map-view">
@@ -251,7 +247,7 @@ export function MapView({ onClaim, refreshKey }: MapViewProps) {
           maxZoom={21}
         />
 
-        <BBoxLoader onLoad={setTerritories} onError={setLoadError} refreshKey={refreshKey} />
+        <BBoxLoader onLoad={setTerritories} refreshKey={refreshKey} />
         <MapRefCapture onMap={setMapInstance} />
 
         {territories.map((territory) => (
@@ -291,28 +287,6 @@ export function MapView({ onClaim, refreshKey }: MapViewProps) {
       <TopHud territoryCount={territories.length} />
       <MapLegend />
       <ZoomControls map={mapInstance} />
-      {loadError && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 12,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 1005,
-            background: 'white',
-            border: `2px solid ${colors.error}`,
-            color: colors.error,
-            borderRadius: 12,
-            padding: '8px 12px',
-            fontSize: 12,
-            fontFamily: 'var(--font-sans)',
-            fontWeight: 700,
-            boxShadow: '0 3px 0 rgba(45,16,64,0.15)',
-          }}
-        >
-          {loadError}
-        </div>
-      )}
 
       <TerritoryPanel
         territory={selected}
