@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: territory-seed
+  namespace: feastfite
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: us-central1-docker.pkg.dev/GCP_PROJECT_ID/feastfite/territory-service:latest
+          command: ["node", "dist/scripts/seedTerritories.js"]
+          env:
+            - name: DB_HOST
+              value: postgres-territory
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: territory_db
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
