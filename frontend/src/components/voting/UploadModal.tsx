@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Territory } from '@feastfite/shared';
 import { voteApi } from '../../api/voteApi';
 import { territoryApi } from '../../api/territoryApi';
+import { Lightbox } from '../ui/Lightbox';
 
 interface UploadModalProps {
   territory: Territory | null;
@@ -27,6 +28,7 @@ export function UploadModal({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const previewUrl = useMemo(
     () => (selectedFile ? URL.createObjectURL(selectedFile) : null),
@@ -50,14 +52,12 @@ export function UploadModal({
     setError(null);
 
     try {
-      // 1. Upload photo to MinIO
-      const upload = await voteApi.createUploadUrl(selectedFile);
-      await voteApi.uploadPhoto(upload.uploadUrl, selectedFile);
+      const { photoKey } = await voteApi.uploadFile(selectedFile);
 
       if (!isContested) {
         // 2a. Uncontested — direct claim, save photo immediately
         await territoryApi.claim(territory.id, token, {
-          photoKey: upload.photoKey,
+          photoKey,
           displayName: currentUserName,
         });
         setSelectedFile(null);
@@ -67,7 +67,7 @@ export function UploadModal({
         // 2b. Contested — create a vote session with real challenger + defender
         const { session } = await voteApi.createSession({
           territoryId: territory.id,
-          photoKey: upload.photoKey,
+          photoKey,
           challengerId: currentUserId,
           challengerName: currentUserName,
           defenderId: territory.ownerId ?? undefined,
@@ -88,6 +88,7 @@ export function UploadModal({
 
   return (
     <div className="overlay">
+      {lightboxSrc && <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
       <div className="candy-card modal-card">
         <div className="eyebrow">{isContested ? 'Food Fight Challenge' : 'Claim Territory'}</div>
         <h2>
@@ -116,7 +117,11 @@ export function UploadModal({
           </label>
 
           {previewUrl && (
-            <div className="preview-frame">
+            <div
+              className="preview-frame"
+              onClick={() => setLightboxSrc(previewUrl)}
+              style={{ cursor: 'zoom-in' }}
+            >
               <img src={previewUrl} alt="Meal preview" className="preview-image" />
             </div>
           )}

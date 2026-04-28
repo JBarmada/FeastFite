@@ -5,12 +5,9 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-export interface UploadUrlResponse {
+export interface UploadResponse {
   bucket: string;
   photoKey: string;
-  uploadUrl: string;
-  expiresInSeconds: number;
-  contentType: string;
 }
 
 export interface VoteCandidate {
@@ -40,24 +37,42 @@ export interface VoteSession {
   ratingByUser: Record<string, Record<string, number>>;
 }
 
+function compressToJpeg(file: File, maxPx = 1920, quality = 0.82): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const blobUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(blobUrl);
+      const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error('Compression failed'))),
+        'image/jpeg',
+        quality,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error('Image load failed')); };
+    img.src = blobUrl;
+  });
+}
+
 export const voteApi = {
   client,
 
-  async createUploadUrl(file: File) {
-    const response = await client.post<UploadUrlResponse>('/votes/upload-url', {
-      fileName: file.name,
-      contentType: file.type || 'image/jpeg',
+  async uploadFile(file: File): Promise<UploadResponse> {
+    const compressed = await compressToJpeg(file);
+    const resp = await fetch('/api/vote/votes/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: compressed,
     });
-    return response.data;
-  },
-
-  async uploadPhoto(uploadUrl: string, file: File) {
-    const response = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type || 'image/jpeg' },
-      body: file,
-    });
-    if (!response.ok) throw new Error(`Upload failed with status ${response.status}`);
+    if (!resp.ok) throw new Error(`Upload failed: ${resp.status}`);
+    return resp.json() as Promise<UploadResponse>;
   },
 
   async createSession(input: {

@@ -31,4 +31,4 @@ COPY --from=builder /app/package.json ./package.json
 WORKDIR /app/services/territory-service
 EXPOSE 3002
 
-CMD ["node", "dist/src/index.js"]
+CMD ["sh", "-c", "node dist/scripts/seedTerritories.js && node dist/src/index.js"]

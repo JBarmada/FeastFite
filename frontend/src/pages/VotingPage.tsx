@@ -104,13 +104,12 @@ export function VotingPage() {
     setUploadError(null);
 
     try {
-      const upload = await voteApi.createUploadUrl(selectedFile);
-      await voteApi.uploadPhoto(upload.uploadUrl, selectedFile);
+      const { photoKey } = await voteApi.uploadFile(selectedFile);
 
       if (!isContested) {
         // Uncontested — direct claim
         await territoryApi.claim(territory.id, authToken, {
-          photoKey: upload.photoKey,
+          photoKey,
           displayName: currentUserName,
         });
 
@@ -146,7 +145,7 @@ export function VotingPage() {
           return;
         }
         const updated = await voteApi.addCandidate(activeSession.id, {
-          photoKey: upload.photoKey,
+          photoKey,
           userId: currentUserId,
           displayName: currentUserName,
         });
@@ -157,7 +156,7 @@ export function VotingPage() {
         const { session } = await voteApi.createSession({
           territoryId: territory.id,
           territoryName: territory.name,
-          photoKey: upload.photoKey,
+          photoKey,
           challengerId: currentUserId,
           challengerName: currentUserName,
           defenderId: territory.ownerId ?? undefined,
@@ -424,8 +423,12 @@ export function VotingPage() {
                   </label>
 
                   {previewUrl && (
-                    <div style={{ marginTop: '16px', borderRadius: '16px', overflow: 'hidden', maxHeight: '260px', border: '2px solid #F0D8EC' }}>
-                      <img src={previewUrl} alt="Meal preview" style={{ width: '100%', height: '260px', objectFit: 'cover', display: 'block' }} />
+                    <div
+                      className="preview-frame"
+                      onClick={() => setLightboxSrc(previewUrl)}
+                      style={{ cursor: 'zoom-in' }}
+                    >
+                      <img src={previewUrl} alt="Meal preview" className="preview-image" />
                     </div>
                   )}
 
