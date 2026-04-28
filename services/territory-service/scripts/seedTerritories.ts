@@ -231,9 +231,23 @@ function makePolygon(ring: Ring): Feature<Polygon> {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+async function waitForDb(retries = 15, delayMs = 2000): Promise<void> {
+  for (let i = 1; i <= retries; i++) {
+    try {
+      await pool.query('SELECT 1');
+      return;
+    } catch {
+      console.info(`[seed] DB not ready, attempt ${i}/${retries} — retrying in ${delayMs}ms…`);
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  throw new Error('[seed] DB never became ready — giving up');
+}
+
 async function seed() {
   console.info(`Seeding ${TERRITORIES.length} USC Village territories…`);  // currently 22
 
+  await waitForDb();
   await pool.query(`CREATE EXTENSION IF NOT EXISTS postgis;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS territories (

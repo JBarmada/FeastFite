@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "seed": "tsx scripts/seedTerritories.ts",
-    "dev": "tsx scripts/seedTerritories.ts && tsx watch src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "start": "node dist/src/index.js",
     "clean": "rm -rf dist"
   },
