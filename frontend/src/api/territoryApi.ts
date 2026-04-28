@@ -114,4 +114,14 @@ export const territoryApi = {
     );
     return data;
   },
+
+  /** Use a Territory Shield from inventory to lock an owned territory for 12h */
+  async applyShield(id: string, token: string): Promise<{ success: boolean; itemUsed: string }> {
+    const { data } = await client.post<{ success: boolean; itemUsed: string }>(
+      `/territories/${id}/shield`,
+      {},
+      { headers: authHeader(token) },
+    );
+    return data;
+  },
 };

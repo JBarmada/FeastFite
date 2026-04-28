@@ -266,12 +266,157 @@ authRouter.get('/users/lookup', async (req: Request, res: Response) => {
     return;
   }
 
-  const result = await db.query<{ id: string; username: string }>(
-    `SELECT id, username FROM users WHERE id = ANY($1::uuid[])`,
+  const result = await db.query<{ id: string; username: string; clan_id: string | null; clan_name: string | null }>(
+    `SELECT u.id, u.username, u.clan_id, c.name AS clan_name
+     FROM users u
+     LEFT JOIN clans c ON c.id = u.clan_id
+     WHERE u.id = ANY($1::uuid[])`,
     [ids],
   );
 
-  res.json({ users: result.rows.map((r) => ({ id: r.id, username: r.username })) });
+  res.json({
+    users: result.rows.map((r) => ({
+      id: r.id,
+      username: r.username,
+      clanId: r.clan_id,
+      clanName: r.clan_name,
+    })),
+  });
+});
+
+// ── POST /clans ───────────────────────────────────────────────────
+
+authRouter.post('/clans', requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as Request & { userId: string }).userId;
+  const { name, tag } = req.body as { name?: string; tag?: string };
+
+  if (!name || !tag) {
+    res.status(400).json({ error: 'name and tag are required' });
+    return;
+  }
+  if (name.length < 2 || name.length > 50) {
+    res.status(400).json({ error: 'name must be 2–50 characters' });
+    return;
+  }
+  if (tag.length < 2 || tag.length > 8) {
+    res.status(400).json({ error: 'tag must be 2–8 characters' });
+    return;
+  }
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: existing } = await client.query<{ clan_id: string | null }>(
+      `SELECT clan_id FROM users WHERE id = $1`,
+      [userId],
+    );
+    if (existing[0]?.clan_id) {
+      await client.query('ROLLBACK');
+      res.status(409).json({ error: 'You are already in a clan' });
+      return;
+    }
+
+    const { rows } = await client.query<{ id: string; name: string; tag: string }>(
+      `INSERT INTO clans (name, tag, created_by) VALUES ($1, $2, $3) RETURNING id, name, tag`,
+      [name.trim(), tag.trim().toUpperCase(), userId],
+    );
+    const clan = rows[0]!;
+
+    await client.query(`UPDATE users SET clan_id = $1 WHERE id = $2`, [clan.id, userId]);
+    await client.query('COMMIT');
+
+    res.status(201).json({ clan });
+  } catch (err: unknown) {
+    await client.query('ROLLBACK');
+    if ((err as { code?: string }).code === '23505') {
+      res.status(409).json({ error: 'Clan name already taken' });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to create clan' });
+  } finally {
+    client.release();
+  }
+});
+
+// ── GET /clans/leaderboard ────────────────────────────────────────
+
+authRouter.get('/clans/leaderboard', async (_req: Request, res: Response) => {
+  const { rows } = await db.query<{ id: string; name: string; tag: string; member_count: string }>(
+    `SELECT c.id, c.name, c.tag, COUNT(u.id)::text AS member_count
+     FROM clans c
+     LEFT JOIN users u ON u.clan_id = c.id
+     GROUP BY c.id, c.name, c.tag
+     ORDER BY member_count DESC
+     LIMIT 20`,
+  );
+  res.json({
+    clans: rows.map((r, i) => ({
+      rank: i + 1,
+      id: r.id,
+      name: r.name,
+      tag: r.tag,
+      memberCount: Number(r.member_count),
+    })),
+  });
+});
+
+// ── GET /clans/:id ────────────────────────────────────────────────
+
+authRouter.get('/clans/:id', async (req: Request, res: Response) => {
+  const { rows } = await db.query<{ id: string; name: string; tag: string; created_at: Date }>(
+    `SELECT id, name, tag, created_at FROM clans WHERE id = $1`,
+    [req.params['id']],
+  );
+  if (rows.length === 0) {
+    res.status(404).json({ error: 'Clan not found' });
+    return;
+  }
+  const clan = rows[0]!;
+
+  const { rows: members } = await db.query<{ id: string; username: string }>(
+    `SELECT id, username FROM users WHERE clan_id = $1 LIMIT 50`,
+    [clan.id],
+  );
+
+  res.json({ clan: { ...clan, members } });
+});
+
+// ── POST /clans/:id/join ──────────────────────────────────────────
+
+authRouter.post('/clans/:id/join', requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as Request & { userId: string }).userId;
+  const clanId = req.params['id'];
+
+  const { rows } = await db.query<{ clan_id: string | null }>(
+    `SELECT clan_id FROM users WHERE id = $1`,
+    [userId],
+  );
+  if (rows[0]?.clan_id) {
+    res.status(409).json({ error: 'Leave your current clan first' });
+    return;
+  }
+
+  const { rowCount } = await db.query(
+    `UPDATE users SET clan_id = $1 WHERE id = $2`,
+    [clanId, userId],
+  );
+  if (!rowCount) {
+    res.status(404).json({ error: 'Clan not found' });
+    return;
+  }
+  res.json({ joined: true });
+});
+
+// ── POST /clans/:id/leave ─────────────────────────────────────────
+
+authRouter.post('/clans/:id/leave', requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as Request & { userId: string }).userId;
+  await db.query(
+    `UPDATE users SET clan_id = NULL WHERE id = $1 AND clan_id = $2`,
+    [userId, req.params['id']],
+  );
+  res.json({ left: true });
 });
 
 // ── POST /forgot-password (stub) ──────────────────────────────────
@@ -282,7 +427,6 @@ authRouter.post('/forgot-password', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'email is required' });
     return;
   }
-  // TODO: send reset email via email service (Week 3)
   // Return 200 regardless to avoid email enumeration
   res.json({ message: 'If that email exists, a reset link has been sent.' });
 });

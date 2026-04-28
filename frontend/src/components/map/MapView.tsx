@@ -214,7 +214,7 @@ function ZoomControls({ map }: { map: LMap | null }) {
 // ── MapView ───────────────────────────────────────────────────────────────────
 
 interface MapViewProps {
-  onClaim: (territory: Territory, intent: 'claim' | 'vote' | 'battering-ram') => void;
+  onClaim: (territory: Territory, intent: 'claim' | 'vote' | 'battering-ram' | 'shield') => void;
   refreshKey?: number;
 }
 

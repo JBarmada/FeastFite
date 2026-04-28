@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Navbar } from '../components/layout/Navbar';
 import { useAuth } from '../contexts/AuthContext';
 import { profileApi, type UserStats, type LedgerEntry } from '../api/profileApi';
+import { economyApi } from '../api/economyApi';
 import { territoryApi, type MySubmission } from '../api/territoryApi';
 import { voteApi } from '../api/voteApi';
 import { Lightbox } from '../components/ui/Lightbox';
+import { ItemIcon } from '../components/ui/ItemIcon';
+import type { ItemKind } from '../components/ui/ItemIcon';
 import type { Territory } from '@feastfite/shared';
 import { AUTH_DISABLED, DEV_USER_ID, DEV_FAKE_TOKEN } from '../config/devAuth';
 import { Panel } from '../components/ui/Panel';
@@ -12,6 +16,12 @@ import { Monster } from '../components/ui/Monster';
 import { CandyPattern } from '../components/ui/CandyPattern';
 import { colors, playerColors } from '../styles/colors';
 import type { MonsterHat } from '../components/ui/Monster';
+
+const INVENTORY_META: Record<string, { name: string; kind: ItemKind }> = {
+  territory_shield: { name: 'Territory Shield', kind: 'shield' },
+  battering_ram:    { name: 'Battering Ram',    kind: 'ram'    },
+  double_points:    { name: 'Double Points',    kind: 'boost'  },
+};
 
 const HAT_CYCLE: MonsterHat[] = ['burger', 'donut', 'taco', 'cone', 'sushi', 'ramen'];
 

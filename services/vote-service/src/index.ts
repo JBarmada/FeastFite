@@ -252,6 +252,16 @@ app.post('/api/vote/votes/sessions/:sessionId/candidates', async (req, res) => {
   return res.status(200).json({ session: await serializeSession(session) });
 });
 
+// ── Get all active sessions ───────────────────────────────────────────────────
+
+app.get('/api/vote/votes/sessions/active', async (_req, res) => {
+  const sessionIds = await redis.smembers(getActiveSessionsKey());
+  const sessions = await Promise.all(sessionIds.map(loadSession));
+  const active = sessions.filter((s): s is VoteSessionRecord => s !== null && s.status === 'active');
+  const serialized = await Promise.all(active.map(serializeSession));
+  return res.status(200).json({ sessions: serialized });
+});
+
 // ── Get session by territory ──────────────────────────────────────────────────
 
 app.get('/api/vote/votes/sessions/by-territory/:territoryId', async (req, res) => {

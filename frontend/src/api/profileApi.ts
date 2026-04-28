@@ -78,7 +78,7 @@ export const profileApi = {
   /** Resolve a list of user IDs to { id → username } map */
   async lookupUsernames(ids: string[]): Promise<Record<string, string>> {
     if (ids.length === 0) return {};
-    const { data } = await authClient.get<{ users: { id: string; username: string }[] }>(
+    const { data } = await authClient.get<{ users: { id: string; username: string; clanId: string | null; clanName: string | null }[] }>(
       `/users/lookup?ids=${ids.join(',')}`
     );
     return Object.fromEntries(data.users.map((u) => [u.id, u.username]));

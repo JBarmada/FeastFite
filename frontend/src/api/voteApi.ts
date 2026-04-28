@@ -110,6 +110,15 @@ export const voteApi = {
     return response.data.session;
   },
 
+  async getActiveSessions(): Promise<VoteSession[]> {
+    try {
+      const response = await client.get<{ sessions: VoteSession[] }>('/votes/sessions/active');
+      return response.data.sessions;
+    } catch {
+      return [];
+    }
+  },
+
   async getPhotoUrl(photoKey: string): Promise<string> {
     try {
       const response = await client.get<{ url: string }>(`/votes/photo-url?key=${encodeURIComponent(photoKey)}`);

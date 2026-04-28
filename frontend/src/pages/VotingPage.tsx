@@ -6,8 +6,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { Navbar } from '../components/layout/Navbar';
 import { VotingRoom } from '../components/voting/VotingRoom';
 import { Lightbox } from '../components/ui/Lightbox';
-import { voteApi, type VoteSession } from '../api/voteApi';
+import { voteApi, type VoteSession, type VoteCandidate } from '../api/voteApi';
 import { territoryApi, type ClaimHistoryEntry } from '../api/territoryApi';
+import { economyApi } from '../api/economyApi';
+import { profileApi } from '../api/profileApi';
+import type { ClaimData } from '../components/map/ClaimingMoment';
 
 export function VotingPage() {
   const location = useLocation();
@@ -28,7 +31,6 @@ export function VotingPage() {
 
   // Session state
   const [activeSession, setActiveSession] = useState<VoteSession | null>(null);
-  const [claimed, setClaimed] = useState(false);
 
   // Gallery
   const [history, setHistory] = useState<ClaimHistoryEntry[]>([]);
@@ -87,7 +89,32 @@ export function VotingPage() {
           photoKey: upload.photoKey,
           displayName: currentUserName,
         });
-        setClaimed(true);
+
+        // Fetch updated stats to build the claiming moment overlay
+        const [balance, stats, owned] = await Promise.allSettled([
+          AUTH_DISABLED ? Promise.resolve(50) : economyApi.getBalance(authToken),
+          AUTH_DISABLED
+            ? Promise.resolve({ balance: 50, streak: 1, lastUploadDate: null })
+            : profileApi.getUserStats(authToken),
+          territoryApi.getOwned(authToken),
+        ]);
+
+        const newBalance = balance.status === 'fulfilled' ? balance.value : 50;
+        const streak = stats.status === 'fulfilled' ? stats.value.streak : 1;
+        const blocksHeld = owned.status === 'fulfilled' ? owned.value.length : 1;
+
+        const claimData: ClaimData = {
+          territoryName: territory.name,
+          ownerName: currentUserName,
+          claimedAt: Date.now(),
+          lockedUntil: Date.now() + 12 * 60 * 60 * 1000,
+          pointsDelta: 50,
+          newBalance,
+          streak,
+          blocksHeld,
+        };
+
+        navigate('/', { state: { claimData } });
       } else if (activeSession) {
         // Session exists — add as new candidate
         const updated = await voteApi.addCandidate(activeSession.id, {
@@ -119,35 +146,13 @@ export function VotingPage() {
     }
   }
 
-  // ── Claimed success ─────────────────────────────────────────────────────────
-
-  if (claimed) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'var(--color-bg)' }}>
-        <Navbar />
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 56px)', gap: '16px', padding: '32px' }}>
-          <div style={{ fontSize: '4rem' }}>🎉</div>
-          <h1 style={{ margin: 0, color: 'var(--color-primary)', fontFamily: 'var(--font-display)' }}>
-            Territory Claimed!
-          </h1>
-          <p style={{ color: 'var(--color-text-secondary)', margin: 0 }}>
-            <strong>{territory?.name}</strong> is yours. Challenge it anytime!
-          </p>
-          <button className="primary-button" onClick={() => navigate('/')} style={{ marginTop: '8px' }}>
-            Back to Map
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // ── Territory gallery + upload ──────────────────────────────────────────────
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--color-bg)' }}>
       {lightboxSrc && <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
       <Navbar />
-      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '40px 16px' }}>
+      <div style={territory ? { maxWidth: '800px', margin: '0 auto', padding: '40px 16px' } : { padding: '32px 24px' }}>
 
         {territory ? (
           <>
@@ -322,119 +327,340 @@ export function VotingPage() {
             </section>
           </>
         ) : (
-          <div>
-            {/* Hero */}
+          <LiveFitesLanding navigate={navigate} currentUserId={currentUserId} authToken={authToken} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Candidate colors cycling ──────────────────────────────────────────────────
+
+const CANDIDATE_COLORS = [
+  { border: '#FFB800', button: '#E53935', bar: '#FFB800', label: '#7A4100' },
+  { border: '#3B6FE8', button: '#3B6FE8', bar: '#3B6FE8', label: '#fff' },
+  { border: '#2EB86B', button: '#2EB86B', bar: '#2EB86B', label: '#fff' },
+  { border: '#FF6B9E', button: '#FF6B9E', bar: '#FF6B9E', label: '#fff' },
+];
+
+function avgRating(c: VoteCandidate): number {
+  if (c.votes === 0) return 0;
+  return c.totalRating / c.votes;
+}
+
+function timeLeft(endsAt: string): string {
+  const ms = new Date(endsAt).getTime() - Date.now();
+  if (ms <= 0) return '0:00';
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// ── Live fites landing page ───────────────────────────────────────────────────
+
+interface LiveFitesLandingProps {
+  navigate: (path: string) => void;
+  currentUserId: string;
+  authToken: string;
+}
+
+function LiveFitesLanding({ navigate }: LiveFitesLandingProps) {
+  const [sessions, setSessions] = useState<VoteSession[]>([]);
+  const [territoryNames, setTerritoryNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    voteApi.getActiveSessions().then((s) => {
+      setSessions(s);
+      const ids = [...new Set(s.map((x) => x.territoryId))];
+      Promise.all(ids.map(async (id) => {
+        try {
+          const t = await territoryApi.getById(id);
+          return { id, name: t.name };
+        } catch {
+          return { id, name: `Block ${id.slice(0, 4).toUpperCase()}` };
+        }
+      })).then((entries) => {
+        const map: Record<string, string> = {};
+        entries.forEach(({ id, name }) => { map[id] = name; });
+        setTerritoryNames(map);
+      });
+    });
+  }, []);
+
+  function handleVote(sessionId: string, candidateId: string) {
+    return voteApi.submitVote(sessionId, { userId: 'guest', candidateId, rating: 5 }).then((updated) => {
+      setSessions((prev) => prev.map((s) => s.id === sessionId ? updated : s));
+    });
+  }
+
+  return (
+    <div>
+      {/* Page header */}
+      <div style={{ marginBottom: '20px' }}>
+        <h1 style={{ margin: '0 0 4px', fontSize: '1.8rem', fontWeight: 900, color: '#1A0A2E', fontFamily: 'var(--font-display)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          Live fites
+          <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: '#E53935', display: 'inline-block', boxShadow: '0 0 0 3px rgba(229,57,53,0.2)' }} />
+        </h1>
+        <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: '0.9rem' }}>
+          Watch grubs duke it out. Cast your vote in the next 10 minutes.
+        </p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '20px', alignItems: 'start' }}>
+
+        {/* ── All fites list ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {sessions.length === 0 ? (
             <div style={{
-              background: 'linear-gradient(135deg, #A020C8 0%, #FF4FA3 60%, #FF9E5E 100%)',
-              borderRadius: 'var(--radius-xl)',
+              background: 'var(--color-surface)',
+              border: '2px dashed var(--color-border)',
+              borderRadius: '16px',
               padding: '48px 32px',
               textAlign: 'center',
-              marginBottom: '32px',
-              boxShadow: 'var(--shadow-lg)',
-            }}>
-              <div style={{ fontSize: '3.5rem', marginBottom: '12px' }}>🍔⚔️🍕</div>
-              <h1 style={{
-                margin: '0 0 10px',
-                color: '#fff',
-                fontFamily: 'var(--font-display)',
-                fontSize: '2rem',
-                textShadow: '0 2px 8px rgba(0,0,0,0.18)',
-              }}>
-                The Food Fight Arena
-              </h1>
-              <p style={{ color: 'rgba(255,255,255,0.88)', margin: '0 0 28px', fontSize: '1rem', lineHeight: 1.5 }}>
-                Pick a territory on the map, upload your best dish, and let the crowd decide who rules the block.
-              </p>
-              <button
-                className="primary-button"
-                onClick={() => navigate('/')}
-                style={{
-                  background: '#fff',
-                  color: 'var(--color-primary)',
-                  fontWeight: 800,
-                  fontSize: '1rem',
-                  padding: '12px 32px',
-                  border: 'none',
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-                }}
-              >
-                🗺️ Go to Map
-              </button>
-            </div>
-
-            {/* How it works */}
-            <h2 style={{
-              fontSize: '1rem',
-              fontWeight: 800,
               color: 'var(--color-text-secondary)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              margin: '0 0 16px',
             }}>
-              How it works
-            </h2>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: '16px',
-              marginBottom: '40px',
-            }}>
-              {[
-                { emoji: '🗺️', step: '1', title: 'Pick a Territory', desc: 'Tap any colored zone on the map — unclaimed or rival-owned.' },
-                { emoji: '📸', step: '2', title: 'Upload Your Dish', desc: 'Snap a photo of your best meal from that spot and submit.' },
-                { emoji: '🗳️', step: '3', title: 'Win the Vote', desc: 'The community rates dishes 1–10. Highest score takes the block!' },
-              ].map(({ emoji, step, title, desc }) => (
-                <div key={step} style={{
-                  background: 'var(--color-surface)',
-                  border: '2px solid var(--color-border)',
-                  borderRadius: 'var(--radius-lg)',
-                  padding: '24px 20px',
-                  boxShadow: 'var(--shadow-sm)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                }}>
-                  <div style={{ fontSize: '2rem' }}>{emoji}</div>
-                  <div style={{
-                    display: 'inline-block',
-                    background: 'var(--color-primary-dim)',
-                    color: 'var(--color-primary)',
-                    fontWeight: 800,
-                    fontSize: '0.72rem',
-                    borderRadius: 'var(--radius-full)',
-                    padding: '2px 10px',
-                    width: 'fit-content',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                  }}>
-                    Step {step}
-                  </div>
-                  <div style={{ fontWeight: 800, color: 'var(--color-text-primary)', fontSize: '0.95rem' }}>{title}</div>
-                  <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.85rem', lineHeight: 1.5 }}>{desc}</div>
-                </div>
-              ))}
+              <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>🍽️</div>
+              <p style={{ margin: 0, fontWeight: 700 }}>No live fites right now</p>
+              <p style={{ margin: '6px 0 0', fontSize: '0.85rem' }}>Start one by picking a block on the map!</p>
             </div>
+          ) : (
+            sessions.map((s, i) => (
+              <FeaturedFite
+                key={s.id}
+                session={s}
+                name={territoryNames[s.territoryId] ?? `Block ${s.territoryId.slice(0, 4).toUpperCase()}`}
+                blockLabel={`BLOCK ${String(i + 1).padStart(2, '0')}`}
+                currentUserId=""
+                onVote={handleVote}
+              />
+            ))
+          )}
+        </div>
 
-            {/* Tip */}
-            <div style={{
-              background: 'var(--color-primary-dim)',
-              border: '1.5px solid var(--color-primary-light)',
-              borderRadius: 'var(--radius-lg)',
-              padding: '16px 20px',
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '12px',
+        {/* ── Sidebar ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <h2 style={{ margin: '0 0 2px', fontSize: '0.95rem', fontWeight: 900, color: '#1A0A2E' }}>Start your own fite</h2>
+          <div style={{ fontSize: '0.8rem', color: '#999', marginBottom: '2px' }}>
+            Snap a meal photo and pick a block to claim.
+          </div>
+          <button
+            onClick={() => navigate('/')}
+            style={{
+              width: '100%', background: '#2EB86B', color: '#fff', border: 'none',
+              borderRadius: '999px', padding: '11px', fontWeight: 800, fontSize: '0.88rem',
+              cursor: 'pointer', letterSpacing: '0.01em', marginBottom: '8px',
+            }}
+          >
+            Pick a block →
+          </button>
+
+          {sessions.length > 0 && (
+            <>
+              <h2 style={{ margin: '4px 0 6px', fontSize: '0.95rem', fontWeight: 900, color: '#1A0A2E' }}>All fites</h2>
+              {sessions.map((s, i) => {
+                const totalVotes = s.candidates.reduce((sum, c) => sum + c.votes, 0);
+                const thumbnail = s.candidates[0]?.photoUrl ?? '';
+                return (
+                  <div key={s.id} style={{
+                    background: '#fff',
+                    border: `2px solid ${CANDIDATE_COLORS[i % CANDIDATE_COLORS.length]?.border ?? '#ccc'}`,
+                    borderRadius: '12px',
+                    padding: '10px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                  }}>
+                    <div style={{
+                      width: '40px', height: '40px', borderRadius: '8px', flexShrink: 0,
+                      background: '#EDE0FF', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {thumbnail
+                        ? <img src={thumbnail} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <span style={{ fontSize: '1.2rem' }}>🍽️</span>}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.8rem', color: '#1A0A2E', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {territoryNames[s.territoryId] ?? `Block ${s.territoryId.slice(0, 4).toUpperCase()}`}
+                      </div>
+                      <div style={{ fontSize: '0.66rem', color: '#999' }}>
+                        {totalVotes} votes · {s.candidates.length} grubs · {timeLeft(s.endsAt)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Featured fite card ────────────────────────────────────────────────────────
+
+interface FeaturedFiteProps {
+  session: VoteSession;
+  name: string;
+  blockLabel: string;
+  currentUserId: string;
+  onVote: (sessionId: string, candidateId: string) => Promise<void>;
+}
+
+function FeaturedFite({ session, name, blockLabel, onVote }: FeaturedFiteProps) {
+  const [voting, setVoting] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  void tick;
+
+  const maxVotes = Math.max(...session.candidates.map((c) => c.votes), 1);
+  const leaderId = session.candidates.reduce(
+    (best, c) => (c.votes > (best?.votes ?? -1) ? c : best),
+    session.candidates[0],
+  )?.id;
+
+  async function handleVote(candidateId: string) {
+    setVoting(candidateId);
+    try { await onVote(session.id, candidateId); } finally { setVoting(null); }
+  }
+
+  const totalWatching = session.candidates.reduce((s, c) => s + c.votes, 0);
+
+  return (
+    <div style={{
+      background: '#fff',
+      border: '3px solid #FFB800',
+      borderRadius: '16px',
+      padding: '14px',
+      boxShadow: '0 4px 24px rgba(255,184,0,0.15)',
+    }}>
+      {/* Card header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{
+            background: '#E53935', color: '#fff', fontSize: '0.72rem', fontWeight: 900,
+            padding: '4px 10px', borderRadius: '999px', letterSpacing: '0.06em',
+            display: 'flex', alignItems: 'center', gap: '5px',
+          }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#fff', display: 'inline-block' }} />
+            LIVE
+          </span>
+          <span style={{ fontWeight: 900, fontSize: '1.15rem', color: '#1A0A2E' }}>{name}</span>
+        </div>
+        <span style={{ fontSize: '0.78rem', color: '#999', fontWeight: 700, letterSpacing: '0.04em' }}>
+          {blockLabel} · CLOSES {timeLeft(session.endsAt)}
+        </span>
+      </div>
+
+      {/* Candidates */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(session.candidates.length, 3)}, 1fr)`, gap: '8px', marginBottom: '12px' }}>
+        {session.candidates.slice(0, 3).map((c, i) => {
+          const color = CANDIDATE_COLORS[i % CANDIDATE_COLORS.length]!;
+          const isLeading = c.id === leaderId && c.votes > 0;
+          const rating = avgRating(c);
+          const barPct = maxVotes > 0 ? (c.votes / maxVotes) * 100 : 0;
+
+          return (
+            <div key={c.id} style={{
+              border: `2.5px solid ${color.border}`,
+              borderRadius: '14px',
+              overflow: 'hidden',
+              background: '#FAFAFA',
+              position: 'relative',
             }}>
-              <span style={{ fontSize: '1.4rem', flexShrink: 0 }}>💡</span>
-              <div>
-                <strong style={{ color: 'var(--color-primary)', fontSize: '0.9rem' }}>Pro tip: </strong>
-                <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-                  Win territories to earn points. Spend points on shields to lock your turf, or a battering ram to break through a defended zone.
-                </span>
+              {isLeading && (
+                <div style={{
+                  position: 'absolute', top: '6px', left: '6px', zIndex: 2,
+                  background: '#FFB800', color: '#7A4100', fontSize: '0.58rem', fontWeight: 900,
+                  padding: '2px 6px', borderRadius: '999px', letterSpacing: '0.06em',
+                }}>
+                  LEADING
+                </div>
+              )}
+
+              {/* Photo area — fixed height so cards stay compact */}
+              <div style={{ width: '100%', height: '120px', background: '#EDE0FF', position: 'relative', overflow: 'hidden' }}>
+                {c.photoUrl ? (
+                  <img src={c.photoUrl} alt={c.displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{
+                    width: '100%', height: '100%',
+                    background: 'repeating-linear-gradient(135deg, #EDE0FF 0px, #EDE0FF 10px, #E0CFFF 10px, #E0CFFF 20px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem',
+                  }}>
+                    🍽️
+                  </div>
+                )}
+                {/* Monster avatar */}
+                <div style={{
+                  position: 'absolute', bottom: '6px', right: '6px',
+                  width: '26px', height: '26px', borderRadius: '50%',
+                  background: color.button, border: '2px solid #fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.8rem', boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                }}>
+                  🐾
+                </div>
+              </div>
+
+              {/* Info */}
+              <div style={{ padding: '8px 8px 10px' }}>
+                <div style={{ fontWeight: 800, fontSize: '0.8rem', color: '#1A0A2E', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {c.displayName}
+                </div>
+                <div style={{ fontSize: '0.68rem', color: '#888', marginBottom: '5px' }}>
+                  ★ {rating > 0 ? rating.toFixed(1) : '—'} · {c.votes} VOTES
+                </div>
+
+                {/* Progress bar */}
+                <div style={{ height: '3px', background: '#EEE', borderRadius: '999px', marginBottom: '8px' }}>
+                  <div style={{ height: '100%', width: `${barPct}%`, background: color.bar, borderRadius: '999px', transition: 'width 0.3s' }} />
+                </div>
+
+                {/* Vote button */}
+                <button
+                  onClick={() => handleVote(c.id)}
+                  disabled={voting !== null}
+                  style={{
+                    width: '100%', background: color.button, color: '#fff',
+                    border: 'none', borderRadius: '999px', padding: '6px 0',
+                    fontWeight: 800, fontSize: '0.75rem', cursor: voting !== null ? 'not-allowed' : 'pointer',
+                    opacity: voting === c.id ? 0.7 : 1,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                  }}
+                >
+                  {voting === c.id ? '…' : '♥ Vote'}
+                </button>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })}
+      </div>
+
+      {/* Watching footer */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px solid #F0E8FF', paddingTop: '10px' }}>
+        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#999', letterSpacing: '0.06em' }}>
+          {totalWatching} GRUBS WATCHING
+        </span>
+        <div style={{ display: 'flex', gap: '-6px' }}>
+          {session.candidates.slice(0, 5).map((c, i) => (
+            <div key={c.id} style={{
+              width: '24px', height: '24px', borderRadius: '50%',
+              background: CANDIDATE_COLORS[i % CANDIDATE_COLORS.length]?.button ?? '#ccc',
+              border: '2px solid #fff', marginLeft: i > 0 ? '-8px' : '0',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '0.7rem', zIndex: 5 - i,
+            }}>
+              🐾
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

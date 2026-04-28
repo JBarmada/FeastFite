@@ -1,30 +1,71 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { Navbar } from '../components/layout/Navbar';
 import { useAuth } from '../contexts/AuthContext';
 import { economyApi, type ShopItemDto } from '../api/economyApi';
 
-const ITEM_META: Record<string, { emoji: string; color: string; bg: string; description: string }> = {
+type FilterTab = 'all' | 'buffs' | 'weapons' | 'cosmetics' | 'coins';
+
+interface ItemMeta {
+  emoji: string;
+  iconBg: string;
+  borderColor: string;
+  btnColor: string;
+  badge: string;
+  badgeColor: string;
+  description: string;
+  category: FilterTab;
+}
+
+const ITEM_META: Record<string, ItemMeta> = {
+  double_points: {
+    emoji: '⭐',
+    iconBg: '#E8F9ED',
+    borderColor: '#3DC45A',
+    btnColor: '#3DC45A',
+    badge: 'Starter',
+    badgeColor: '#3DC45A',
+    description: 'Next win scores ×2',
+    category: 'buffs',
+  },
   territory_shield: {
     emoji: '🛡️',
-    color: '#00C8E0',
-    bg: 'linear-gradient(135deg, #CCF3F9, #80E0F0)',
-    description: 'Blocks a sneaky takeover while your dish is on the line.',
+    iconBg: '#E0F8FB',
+    borderColor: '#00C8E0',
+    btnColor: '#00C8E0',
+    badge: 'Popular',
+    badgeColor: '#00C8E0',
+    description: 'Block one challenge for 12h',
+    category: 'weapons',
   },
   battering_ram: {
-    emoji: '🐏',
-    color: '#FF7A00',
-    bg: 'linear-gradient(135deg, #FFE0C0, #FFBC80)',
-    description: 'Breaks a territory lock so you can fight for the crown.',
-  },
-  double_points: {
-    emoji: '⚡',
-    color: '#3DC45A',
-    bg: 'linear-gradient(135deg, #D4F5DC, #90DCA8)',
-    description: 'Sweet multiplier — stack those candy points faster.',
+    emoji: '🔨',
+    iconBg: '#FFE8ED',
+    borderColor: '#FF4B6E',
+    btnColor: '#FF4B6E',
+    badge: 'Rare',
+    badgeColor: '#FF4B6E',
+    description: 'Break a locked block early',
+    category: 'weapons',
   },
 };
+
+const FALLBACK_META: ItemMeta = {
+  emoji: '🍬',
+  iconBg: '#F0E8FF',
+  borderColor: '#A020C8',
+  btnColor: '#A020C8',
+  badge: '',
+  badgeColor: '#A020C8',
+  description: '',
+  category: 'all',
+};
+
+const TABS: { key: FilterTab; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'buffs', label: 'Buffs' },
+  { key: 'weapons', label: 'Weapons' },
+];
 
 function notifyBalanceChanged() {
   window.dispatchEvent(new Event('feastfite:balance'));
@@ -37,8 +78,8 @@ export function ShopPage() {
   const [inventory, setInventory] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [buyingId, setBuyingId] = useState<string | null>(null);
-  const [pendingBuyId, setPendingBuyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<FilterTab>('all');
 
   const loadShop = useCallback(async () => {
     const { items: list } = await economyApi.getShop();
@@ -74,284 +115,199 @@ export function ShopPage() {
     return () => { cancelled = true; };
   }, [token, loadShop, loadAuthSlice]);
 
-  async function confirmPurchase(itemId: string) {
+  async function handlePurchase(itemId: string) {
     if (!token) return;
     setBuyingId(itemId);
     setError(null);
     try {
       const { balance: next } = await economyApi.purchase(token, itemId);
       setBalance(next);
-      setPendingBuyId(null);
       await loadAuthSlice();
       notifyBalanceChanged();
     } catch (err: unknown) {
       const ax = err as { response?: { status?: number; data?: { error?: string } } };
       setError(
         ax.response?.status === 402
-          ? 'Not enough points — play more to earn candy!'
-          : ax.response?.data?.error ?? 'Purchase failed',
+          ? 'Not enough coins — play more to earn candy!'
+          : (ax.response?.data?.error ?? 'Purchase failed'),
       );
     } finally {
       setBuyingId(null);
     }
   }
 
+  const filteredItems = activeTab === 'all'
+    ? items
+    : items.filter(item => (ITEM_META[item.id]?.category ?? 'all') === activeTab);
+
   return (
     <div style={{ minHeight: '100vh' }}>
       <Navbar />
-      <div style={{ paddingTop: '40px' }}>
-        <div className="page-card">
+      <div style={{ maxWidth: '960px', margin: '0 auto', padding: '28px 20px' }}>
 
-          {/* Header */}
-          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-            <div style={{ fontSize: '3.5rem' }}>🤖🛒</div>
-            <h1 style={{
-              margin: '8px 0 4px', color: '#A020C8',
-              fontFamily: 'var(--font-display)', fontSize: '2rem',
-            }}>
-              SHOP
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '22px' }}>
+          <div>
+            <h1 style={{ margin: '0 0 4px', fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 900, color: '#2D1040' }}>
+              Sweet Shop
             </h1>
-            <div style={{
-              display: 'inline-block',
-              background: 'rgba(255,255,255,0.6)',
-              border: '2px solid rgba(160,32,200,0.2)',
-              borderRadius: '999px', padding: '6px 20px',
-              fontWeight: 800, fontSize: '1rem', color: '#2D1040',
-            }}>
-              The Sweet Spot: SHOP
-            </div>
-            <p style={{ color: '#7A5490', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', margin: '8px 0 0' }}>
-              Welcome to the FeastFite Emporium!
+            <p style={{ margin: 0, color: '#7A5490', fontSize: '0.9rem', fontWeight: 600 }}>
+              Spend your coins on buffs, shields, and grub gear.
             </p>
           </div>
-
-          {!isAuthenticated && (
-            <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-              <p style={{ color: '#7A5490', margin: 0 }}>
-                <Link to="/login" style={{ color: '#A020C8', fontWeight: 700 }}>Log in</Link>{' '}
-                to see your balance and buy treats.
-              </p>
-            </div>
-          )}
-
-          {error && (
-            <div role="alert" style={{
-              background: 'rgba(255,80,120,0.15)', border: '1.5px solid rgba(255,80,120,0.4)',
-              color: '#a02050', padding: '10px 16px', borderRadius: '12px',
-              fontSize: '0.9rem', marginBottom: '16px', textAlign: 'center',
+          {isAuthenticated && balance !== null && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              background: 'linear-gradient(135deg, #FFD700, #FFA500)',
+              borderRadius: '999px', padding: '8px 16px',
+              fontWeight: 900, fontSize: '1rem', color: '#5A3000',
+              boxShadow: '0 3px 10px rgba(255,165,0,0.3)',
             }}>
-              {error}
+              <span>🪙</span>
+              <span>{balance.toLocaleString()}</span>
             </div>
-          )}
-
-          {loading ? (
-            <p style={{ color: '#7A5490', textAlign: 'center', padding: '40px' }}>Loading shop…</p>
-          ) : (
-            <>
-              {/* Two-column layout */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '20px',
-                marginBottom: '20px',
-              }}>
-                {/* MY ITEMS */}
-                <div style={{
-                  background: 'rgba(255,255,255,0.45)',
-                  borderRadius: '20px',
-                  padding: '20px',
-                  border: '1.5px solid rgba(255,255,255,0.7)',
-                }}>
-                  <h2 style={{
-                    margin: '0 0 16px', fontFamily: 'var(--font-display)',
-                    fontSize: '1.1rem', fontWeight: 900, color: '#2D1040',
-                    textAlign: 'center', letterSpacing: '0.06em',
-                  }}>
-                    MY ITEMS
-                  </h2>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {items.map((item) => {
-                      const meta = ITEM_META[item.id] ?? { emoji: '🍬', color: '#A020C8', bg: 'linear-gradient(135deg,#EDD6F7,#D4A8E8)', description: '' };
-                      const owned = inventory[item.id] ?? 0;
-                      return (
-                        <div key={item.id} style={{
-                          background: meta.bg,
-                          borderRadius: '16px',
-                          padding: '14px 16px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
-                          border: `1.5px solid ${meta.color}40`,
-                        }}>
-                          <div style={{ fontSize: '2rem', flexShrink: 0 }}>{meta.emoji}</div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#2D1040' }}>{item.name}</div>
-                            <div style={{ fontWeight: 800, fontSize: '1rem', color: meta.color }}>×{owned}</div>
-                          </div>
-                          <button
-                            type="button"
-                            style={{
-                              padding: '6px 14px', borderRadius: '999px', border: 'none',
-                              fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
-                              background: owned > 0 ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.1)',
-                              color: owned > 0 ? '#2D1040' : '#888',
-                            }}
-                          >
-                            {owned > 0 ? 'Explore' : 'Empty'}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* SHOP INVENTORY */}
-                <div style={{
-                  background: 'rgba(255,255,255,0.45)',
-                  borderRadius: '20px',
-                  padding: '20px',
-                  border: '1.5px solid rgba(255,255,255,0.7)',
-                }}>
-                  <h2 style={{
-                    margin: '0 0 16px', fontFamily: 'var(--font-display)',
-                    fontSize: '1.1rem', fontWeight: 900, color: '#2D1040',
-                    textAlign: 'center', letterSpacing: '0.06em',
-                  }}>
-                    SHOP INVENTORY
-                  </h2>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
-                    gap: '10px',
-                  }}>
-                    {items.map((item) => {
-                      const meta = ITEM_META[item.id] ?? { emoji: '🍬', color: '#A020C8', bg: 'linear-gradient(135deg,#EDD6F7,#D4A8E8)', description: '' };
-                      const canAfford: boolean = Boolean(isAuthenticated && token && balance !== null && balance >= item.pricePoints);
-                      const isConfirming = pendingBuyId === item.id;
-                      const isBuying = buyingId === item.id;
-                      return (
-                        <div key={item.id} style={{
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
-                        }}>
-                          {/* PURCHASE button on top */}
-                          {!isAuthenticated ? (
-                            <Link to="/login" style={purchaseBtn(false)}>PURCHASE</Link>
-                          ) : isConfirming ? (
-                            <button
-                              type="button"
-                              disabled={isBuying}
-                              onClick={() => void confirmPurchase(item.id)}
-                              style={purchaseBtn(canAfford ?? false) as CSSProperties}
-                            >
-                              {isBuying ? '...' : 'CONFIRM'}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={!canAfford || isBuying}
-                              onClick={() => { if (canAfford) setPendingBuyId(item.id); }}
-                              style={purchaseBtn(canAfford ?? false) as CSSProperties}
-                            >
-                              PURCHASE
-                            </button>
-                          )}
-
-                          {/* Item card */}
-                          <div style={{
-                            background: meta.bg,
-                            borderRadius: '14px',
-                            padding: '14px 10px',
-                            textAlign: 'center',
-                            width: '100%',
-                            border: `1.5px solid ${meta.color}40`,
-                          }}>
-                            <div style={{ fontSize: '2rem' }}>{meta.emoji}</div>
-                            <div style={{ fontWeight: 700, fontSize: '0.78rem', color: '#2D1040', marginTop: '4px' }}>{item.name}</div>
-                            <div style={{ fontWeight: 800, fontSize: '0.82rem', color: meta.color, marginTop: '2px' }}>
-                              {item.pricePoints.toLocaleString()} pts
-                            </div>
-                          </div>
-
-                          {isConfirming && !isBuying && (
-                            <button
-                              type="button"
-                              onClick={() => setPendingBuyId(null)}
-                              style={{
-                                padding: '4px 12px', borderRadius: '999px', border: '1.5px solid #ccc',
-                                background: 'transparent', color: '#888', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700,
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {isAuthenticated && balance !== null && (
-                    <div style={{
-                      marginTop: '16px', textAlign: 'center',
-                      fontWeight: 800, color: '#7A4100',
-                      background: 'linear-gradient(135deg, #FFE08A, #FFA800)',
-                      borderRadius: '999px', padding: '8px 20px',
-                      fontSize: '0.9rem',
-                    }}>
-                      🪙 Balance: {balance.toLocaleString()} pts
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Bottom inventory bar */}
-              <div style={{
-                background: 'rgba(255,255,255,0.55)',
-                borderRadius: '999px',
-                padding: '10px 20px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '16px',
-                flexWrap: 'wrap',
-              }}>
-                <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#7A5490', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  My Items
-                </span>
-                {items.map((item) => {
-                  const meta = ITEM_META[item.id] ?? { emoji: '🍬', color: '#A020C8', bg: '', description: '' };
-                  const owned = inventory[item.id] ?? 0;
-                  return (
-                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ fontSize: '1.1rem' }}>{meta.emoji}</span>
-                      <span style={{ fontWeight: 800, fontSize: '0.9rem', color: owned > 0 ? '#2D1040' : '#aaa' }}>{owned}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
           )}
         </div>
+
+        {error && (
+          <div role="alert" style={{
+            background: 'rgba(255,80,120,0.15)', border: '1.5px solid rgba(255,80,120,0.4)',
+            color: '#a02050', padding: '10px 16px', borderRadius: '12px',
+            fontSize: '0.9rem', marginBottom: '16px', textAlign: 'center',
+          }}>
+            {error}
+          </div>
+        )}
+
+        {/* Filter tabs */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          {TABS.map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                padding: '7px 20px', borderRadius: '999px', fontWeight: 700, fontSize: '0.9rem',
+                cursor: 'pointer', transition: 'all 160ms',
+                border: activeTab === tab.key ? '2px solid #9B30D0' : '2px solid rgba(160,32,200,0.25)',
+                background: activeTab === tab.key ? 'rgba(155,48,208,0.1)' : 'rgba(255,255,255,0.55)',
+                color: activeTab === tab.key ? '#9B30D0' : '#7A5490',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Items grid */}
+        {loading ? (
+          <p style={{ color: '#7A5490', textAlign: 'center', padding: '60px' }}>Loading shop…</p>
+        ) : filteredItems.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px', color: '#9A78A0', fontWeight: 700 }}>
+            No items in this category yet.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '20px' }}>
+            {filteredItems.map(item => {
+              const meta = ITEM_META[item.id] ?? FALLBACK_META;
+              const canAfford = !!(isAuthenticated && token && balance !== null && balance >= item.pricePoints);
+              const isBuying = buyingId === item.id;
+              const owned = inventory[item.id] ?? 0;
+
+              return (
+                <div key={item.id} style={{
+                  background: '#fff',
+                  borderRadius: '18px',
+                  padding: '18px',
+                  border: `2.5px solid ${meta.borderColor}`,
+                  position: 'relative',
+                  boxShadow: '0 4px 18px rgba(0,0,0,0.07)',
+                }}>
+                  {meta.badge && (
+                    <div style={{
+                      position: 'absolute', top: '-1px', right: '-1px',
+                      background: meta.badgeColor, color: '#fff',
+                      fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.03em',
+                      padding: '3px 11px', borderRadius: '0 16px 0 10px',
+                    }}>
+                      {meta.badge}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '18px' }}>
+                    <div style={{
+                      width: '56px', height: '56px', borderRadius: '14px',
+                      background: meta.iconBg, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', fontSize: '2rem', flexShrink: 0,
+                    }}>
+                      {meta.emoji}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 900, fontSize: '1rem', color: '#2D1040', marginBottom: '3px' }}>
+                        {item.name}
+                      </div>
+                      <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#9A78A0', lineHeight: 1.35 }}>
+                        {meta.description}
+                      </div>
+                      {owned > 0 && (
+                        <div style={{ fontWeight: 700, fontSize: '0.72rem', color: meta.borderColor, marginTop: '3px' }}>
+                          ×{owned} owned
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '5px',
+                      background: 'linear-gradient(135deg, #FFE566, #FFC107)',
+                      borderRadius: '999px', padding: '5px 13px',
+                      fontWeight: 800, color: '#5A3000', fontSize: '0.9rem',
+                    }}>
+                      <span>🪙</span>
+                      <span>{item.pricePoints}</span>
+                    </div>
+
+                    {!isAuthenticated ? (
+                      <Link to="/login" style={{
+                        padding: '7px 20px', borderRadius: '999px',
+                        background: meta.btnColor, color: '#fff',
+                        fontWeight: 800, fontSize: '0.85rem', textDecoration: 'none',
+                        display: 'inline-block',
+                      }}>
+                        Grab It
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!canAfford || isBuying}
+                        onClick={() => void handlePurchase(item.id)}
+                        style={{
+                          padding: '7px 20px', borderRadius: '999px', border: 'none',
+                          background: canAfford ? meta.btnColor : '#DDD',
+                          color: canAfford ? '#fff' : '#999',
+                          fontWeight: 800, fontSize: '0.85rem',
+                          cursor: canAfford ? 'pointer' : 'not-allowed',
+                          transition: 'opacity 160ms',
+                        }}
+                      >
+                        {isBuying ? '…' : 'Grab It'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {!isAuthenticated && !loading && (
+          <p style={{ textAlign: 'center', color: '#7A5490', marginTop: '16px', fontSize: '0.9rem' }}>
+            <Link to="/login" style={{ color: '#A020C8', fontWeight: 700 }}>Log in</Link>{' '}
+            to see your balance and buy treats.
+          </p>
+        )}
       </div>
     </div>
   );
-}
-
-function purchaseBtn(canAfford: boolean): CSSProperties {
-  return {
-    width: '100%',
-    padding: '6px 8px',
-    borderRadius: '999px',
-    border: canAfford ? 'none' : '1.5px solid rgba(180,130,200,0.4)',
-    cursor: canAfford ? 'pointer' : 'not-allowed',
-    fontWeight: 800,
-    fontSize: '0.72rem',
-    letterSpacing: '0.04em',
-    textAlign: 'center',
-    textDecoration: 'none',
-    display: 'block',
-    background: canAfford
-      ? 'linear-gradient(135deg, #FF6FA3, #FF9E8C)'
-      : 'rgba(200,180,220,0.3)',
-    color: canAfford ? '#fff' : '#9A78A0',
-    boxShadow: canAfford ? '0 3px 10px rgba(255,111,145,0.3)' : 'none',
-  };
 }

@@ -271,6 +271,70 @@ territoriesRouter.get('/:id/history', async (req: Request, res: Response) => {
   });
 });
 
+// ── GET /territories/stats/owners ────────────────────────────────────────────
+
+territoriesRouter.get('/stats/owners', async (_req: Request, res: Response) => {
+  const { rows } = await pool.query<{ owner_id: string; count: string }>(
+    `SELECT owner_id, COUNT(*)::text AS count
+     FROM territories
+     WHERE owner_id IS NOT NULL
+     GROUP BY owner_id
+     ORDER BY count DESC`,
+  );
+  res.json({
+    owners: rows.map((r) => ({ userId: r.owner_id, blocksHeld: Number(r.count) })),
+  });
+});
+
+// ── POST /territories/:id/shield ─────────────────────────────────────────────
+// Consumes a Territory Shield from inventory and locks the territory for 12 h.
+
+territoriesRouter.post('/:id/shield', requireAuth, async (req: Request, res: Response) => {
+  const userId = (req as Request & { userId: string }).userId;
+
+  const { rows } = await pool.query(
+    `SELECT id, owner_id, locked_until FROM territories WHERE id = $1`,
+    [req.params['id']],
+  );
+
+  if (rows.length === 0) {
+    res.status(404).json({ error: 'Territory not found' });
+    return;
+  }
+
+  const territory = rows[0] as { id: string; owner_id: string | null; locked_until: string | null };
+
+  if (territory.owner_id !== userId) {
+    res.status(403).json({ error: 'You do not own this territory' });
+    return;
+  }
+
+  try {
+    await axios.post(
+      `${ECONOMY_SERVICE_URL}/api/economy/inventory/use`,
+      { itemId: 'territory_shield' },
+      { headers: { Authorization: req.headers.authorization } },
+    );
+  } catch (err) {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+    const msg =
+      status === 400
+        ? 'Buy a Territory Shield in the shop first'
+        : 'Economy service unavailable';
+    res.status(status === 400 ? 402 : 502).json({ error: msg });
+    return;
+  }
+
+  await pool.query(
+    `UPDATE territories
+        SET locked_until = NOW() + INTERVAL '12 hours', updated_at = NOW()
+      WHERE id = $1`,
+    [territory.id],
+  );
+
+  res.json({ success: true, itemUsed: 'territory_shield' });
+});
+
 // ── POST /territories/:id/battering-ram ───────────────────────────────────────
 // Deducts points from economy-service and clears the lock.
 

@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { Territory } from '@feastfite/shared';
 import { LockCountdown } from './LockCountdown';
 import { getPlayerColorByIndex, playerColors } from '../../styles/colors';
 import { profileApi, type TerritoryLeaderboardEntry } from '../../api/profileApi';
+import { economyApi } from '../../api/economyApi';
+import { useAuth } from '../../contexts/AuthContext';
+import { AUTH_DISABLED, DEV_USER_ID } from '../../config/devAuth';
 import { Panel } from '../ui/Panel';
 import { CandyButton } from '../ui/CandyButton';
 import { FoodIcon } from '../ui/FoodIcon';
@@ -50,14 +54,18 @@ function formatHeldSince(capturedAt: Date | string | null): string {
 interface Props {
   territory: Territory | null;
   onClose: () => void;
-  onClaim: (territory: Territory, intent: 'claim' | 'vote' | 'battering-ram') => void;
+  onClaim: (territory: Territory, intent: 'claim' | 'vote' | 'battering-ram' | 'shield') => void;
   ownerName?: string;
   ownerAvatarUrl?: string;
 }
 
 export function TerritoryPanel({ territory, onClose, onClaim, ownerName }: Props) {
+  const { user, token } = useAuth();
+  const currentUserId = AUTH_DISABLED ? DEV_USER_ID : (user?.id ?? null);
+
   const [leaderboard, setLeaderboard] = useState<TerritoryLeaderboardEntry[]>([]);
   const [usernameMap, setUsernameMap] = useState<Record<string, string>>({});
+  const [inventory, setInventory] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!territory) return;
@@ -75,6 +83,18 @@ export function TerritoryPanel({ territory, onClose, onClaim, ownerName }: Props
       .catch(() => {});
   }, [territory?.id]);
 
+  useEffect(() => {
+    const authToken = AUTH_DISABLED ? 'dev-bypass-token' : token;
+    if (!authToken) { setInventory({}); return; }
+    economyApi.getInventory(authToken)
+      .then(({ items }) => {
+        const map: Record<string, number> = {};
+        for (const row of items) map[row.itemId] = row.quantity;
+        setInventory(map);
+      })
+      .catch(() => setInventory({}));
+  }, [territory?.id, token]);
+
   if (!territory) return null;
 
   const palette = territory.ownerId
@@ -86,6 +106,9 @@ export function TerritoryPanel({ territory, onClose, onClaim, ownerName }: Props
   const displayOwnerName = ownerName ?? territory.ownerName ?? (territory.ownerId ? 'Unknown Foodie' : null);
   const isLocked = !!territory.lockedUntil && new Date(territory.lockedUntil) > new Date();
   const isVoting = !territory.ownerId && isLocked;
+  const isOwnTerritory = !!currentUserId && territory.ownerId === currentUserId;
+  const battRamCount = inventory['battering_ram'] ?? 0;
+  const shieldCount = inventory['territory_shield'] ?? 0;
 
   return (
     <aside
@@ -225,7 +248,26 @@ export function TerritoryPanel({ territory, onClose, onClaim, ownerName }: Props
         </div>
 
         {/* CTA */}
-        {!isVoting && !isLocked && (
+        {/* Own territory, not locked: offer shield */}
+        {isOwnTerritory && !isLocked && (
+          shieldCount > 0 ? (
+            <CandyButton
+              color="#00C8E0"
+              style={{ width: '100%', justifyContent: 'center' }}
+              icon={<ItemIcon kind="shield" size={22} />}
+              onClick={() => onClaim(territory, 'shield')}
+            >
+              Apply Shield (×{shieldCount})
+            </CandyButton>
+          ) : (
+            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', textAlign: 'center', padding: '6px 0' }}>
+              🛡️ No shields — <Link to="/shop" style={{ color: 'var(--color-primary)', fontWeight: 700, textDecoration: 'none' }}>Buy one in the shop</Link>
+            </div>
+          )
+        )}
+
+        {/* Not own territory, not voting, not locked: claim or challenge */}
+        {!isOwnTerritory && !isVoting && !isLocked && (
           <CandyButton
             color="var(--color-secondary)"
             style={{ width: '100%', justifyContent: 'center' }}
@@ -234,6 +276,8 @@ export function TerritoryPanel({ territory, onClose, onClaim, ownerName }: Props
             {territory.ownerId ? 'Challenge this grub!' : 'Claim this grub!'}
           </CandyButton>
         )}
+
+        {/* Voting in progress */}
         {isVoting && (
           <CandyButton
             color="var(--color-warning)"
@@ -243,15 +287,23 @@ export function TerritoryPanel({ territory, onClose, onClaim, ownerName }: Props
             Jump in the vote
           </CandyButton>
         )}
-        {isLocked && (
-          <CandyButton
-            color="var(--color-error)"
-            style={{ width: '100%', justifyContent: 'center' }}
-            icon={<ItemIcon kind="ram" size={22} />}
-            onClick={() => onClaim(territory, 'battering-ram')}
-          >
-            Use battering ram (500)
-          </CandyButton>
+
+        {/* Locked + not own territory: battering ram */}
+        {isLocked && !isOwnTerritory && (
+          battRamCount > 0 ? (
+            <CandyButton
+              color="var(--color-error)"
+              style={{ width: '100%', justifyContent: 'center' }}
+              icon={<ItemIcon kind="ram" size={22} count={battRamCount} />}
+              onClick={() => onClaim(territory, 'battering-ram')}
+            >
+              Use battering ram (×{battRamCount})
+            </CandyButton>
+          ) : (
+            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', textAlign: 'center', padding: '6px 0' }}>
+              🔒 Need a battering ram — <Link to="/shop" style={{ color: 'var(--color-primary)', fontWeight: 700, textDecoration: 'none' }}>Buy one in the shop</Link>
+            </div>
+          )
         )}
 
         {/* Leaderboard */}
