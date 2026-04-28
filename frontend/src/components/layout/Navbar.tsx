@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAudio } from '../../contexts/AudioContext';
 import { economyApi } from '../../api/economyApi';
 import { AUTH_DISABLED } from '../../config/devAuth';
 import { CoinPill } from '../ui/CoinPill';
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
 
 export function Navbar() {
   const { isAuthenticated, user, logout, token } = useAuth();
+  const { isMuted, toggleMute } = useAudio();
   const [points, setPoints] = useState<number | null>(null);
   const [inventory, setInventory] = useState<Record<string, number>>({});
   const navigate = useNavigate();
@@ -125,6 +127,26 @@ export function Navbar() {
 
       {/* Right cluster */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        {/* Mute toggle */}
+        <button
+          data-no-sfx
+          onClick={toggleMute}
+          title={isMuted ? 'Unmute' : 'Mute'}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            border: '2px solid var(--color-border)',
+            background: isMuted ? '#F3E8FF' : 'white',
+            cursor: 'pointer',
+            fontSize: 18,
+            display: 'grid',
+            placeItems: 'center',
+            flexShrink: 0,
+          }}
+        >
+          {isMuted ? '🔇' : '🔊'}
+        </button>
         {isAuthenticated ? (
           <>
             {/* Inventory pill */}

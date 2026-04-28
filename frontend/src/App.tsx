@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { AudioProvider } from './contexts/AudioContext';
 import { PrivateRoute } from './components/PrivateRoute';
 // When `AUTH_DISABLED` is true in `config/devAuth.ts`, login/register are optional;
 // the app uses a fake dev user without calling auth-service.
@@ -21,8 +22,14 @@ export function App() {
 
   return (
     <>
-      {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
+      {showSplash && (
+        <SplashScreen onDone={() => {
+          setShowSplash(false);
+          window.dispatchEvent(new Event('feastfite:splash-done'));
+        }} />
+      )}
       <BrowserRouter>
+      <AudioProvider>
       <AuthProvider>
         <Routes>
           {/* Public routes */}
@@ -44,6 +51,7 @@ export function App() {
           </Route>
         </Routes>
       </AuthProvider>
+      </AudioProvider>
     </BrowserRouter>
     </>
   );

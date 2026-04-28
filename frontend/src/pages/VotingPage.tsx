@@ -59,6 +59,13 @@ export function VotingPage() {
     && activeSession.status !== 'completed'
     && activeSession.status !== 'cancelled';
 
+  // Play battle sound when a live fight is active
+  useEffect(() => {
+    if (fightActive) {
+      window.dispatchEvent(new CustomEvent('feastfite:sfx', { detail: 'battle' }));
+    }
+  }, [fightActive]);
+
   /** Mid-fight uploads (add another candidate) are only allowed after using a battering ram on this visit. */
   const canAddDishDuringFight = fightActive && fromBatteringRam;
 

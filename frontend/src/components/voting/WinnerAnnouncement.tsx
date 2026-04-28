@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { VoteSession } from '../../api/voteApi';
 
 interface WinnerAnnouncementProps {
@@ -6,6 +7,12 @@ interface WinnerAnnouncementProps {
 }
 
 export function WinnerAnnouncement({ session, onDismiss }: WinnerAnnouncementProps) {
+  useEffect(() => {
+    if (session?.status === 'completed') {
+      window.dispatchEvent(new CustomEvent('feastfite:sfx', { detail: 'win' }));
+    }
+  }, [session?.status]);
+
   if (!session || session.status !== 'completed') {
     return null;
   }
