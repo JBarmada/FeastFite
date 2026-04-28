@@ -47,7 +47,7 @@ export function MapPage() {
         await territoryApi.batteringRam(territory.id, authToken);
         window.dispatchEvent(new Event('feastfite:balance'));
         // Lock is broken — send the user to upload their challenge dish
-        navigate('/voting', { state: { territory } });
+        navigate('/voting', { state: { territory, fromBatteringRam: true } });
       } catch (error) {
         console.error('Failed to use battering ram', error);
         setActionError(extractErrorMessage(error, 'Could not use Battering Ram. Try again.'));

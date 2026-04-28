@@ -14,20 +14,24 @@ interface VotingRoomProps {
 
 let socket: Socket | null = null;
 
+/** Formats remaining time (vote-service enforces a 10-minute window per session). */
+function formatVoteWindowRemaining(ms: number): string {
+  if (ms <= 0) return 'Time\'s up!';
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+  return `${m}m ${String(s).padStart(2, '0')}s`;
+}
+
 function useCountdown(endsAt: string | undefined) {
   const [label, setLabel] = useState('');
   useEffect(() => {
     if (!endsAt) return;
     const tick = () => {
       const ms = new Date(endsAt).getTime() - Date.now();
-      if (ms <= 0) { setLabel('Time\'s up!'); return; }
-      const totalSec = Math.floor(ms / 1000);
-      const m = Math.floor(totalSec / 60);
-      const s = totalSec % 60;
-      const label = m > 0
-        ? `${m}m ${String(s).padStart(2, '0')}s`
-        : `${s}s`;
-      setLabel(`${label} remaining!`);
+      setLabel(`${formatVoteWindowRemaining(ms)} remaining!`);
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -78,6 +82,12 @@ export function VotingRoom({ sessionId, currentUserId, territoryName, onBack, on
   }, 0) ?? 0;
 
   async function handleRate(candidateId: string, rating: number) {
+    const cand = session?.candidates.find((c) => c.id === candidateId);
+    if (cand?.userId === currentUserId) {
+      setError('You can’t rate your own dish.');
+      setRatingCardId(null);
+      return;
+    }
     setVotingFor(candidateId);
     setError(null);
     try {
@@ -221,9 +231,24 @@ export function VotingRoom({ sessionId, currentUserId, territoryName, onBack, on
 
                   {/* Action area */}
                   {isOwnDish ? (
-                    <p style={{ fontSize: '0.78rem', color: '#7A5490', fontWeight: 600, margin: '8px 0 0' }}>
-                      Others are rating your dish!
-                    </p>
+                    <div
+                      aria-label="You cannot vote for your own dish"
+                      style={{
+                        marginTop: '10px',
+                        padding: '10px 8px',
+                        borderRadius: '12px',
+                        border: '2px dashed rgba(160,80,120,0.35)',
+                        background: 'rgba(245,230,240,0.65)',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <p style={{ fontSize: '0.72rem', fontWeight: 800, color: '#994466', margin: '0 0 4px', letterSpacing: '0.04em' }}>
+                        YOUR DISH
+                      </p>
+                      <p style={{ fontSize: '0.74rem', color: '#7A5490', fontWeight: 600, margin: 0, lineHeight: 1.35 }}>
+                        You can’t vote for yourself — pick another grub’s plate to rate.
+                      </p>
+                    </div>
                   ) : alreadyRated ? (
                     <p style={{ fontSize: '0.78rem', color: '#A020C8', fontWeight: 700, margin: '8px 0 0' }}>
                       You rated: {'⭐'.repeat(Math.min(myRating ?? 0, 5))} ({myRating}/10)
