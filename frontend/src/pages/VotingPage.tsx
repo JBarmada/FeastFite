@@ -270,17 +270,19 @@ export function VotingPage() {
                 }}>
                   {history.map((entry) => {
                     const photoUrl = entry.photoKey ? (photoUrls[entry.photoKey] ?? null) : null;
+                    const fightOngoing = activeSession != null && activeSession.status !== 'completed' && activeSession.status !== 'cancelled';
+                    const showWinner = entry.isWinner && !fightOngoing;
                     const avgDisplay = entry.avgRating != null
                       ? `⭐ ${entry.avgRating.toFixed(1)}`
-                      : entry.isWinner ? '👑 Winner' : '—';
+                      : showWinner ? '👑 Winner' : '—';
 
                     return (
                       <div key={entry.id} style={{
                         borderRadius: '14px',
                         overflow: 'hidden',
-                        background: entry.isWinner ? '#FFF4E6' : 'var(--color-surface)',
-                        border: `2px solid ${entry.isWinner ? '#FFD8A8' : 'var(--color-border)'}`,
-                        boxShadow: entry.isWinner ? '0 2px 12px rgba(255,180,60,0.18)' : undefined,
+                        background: showWinner ? '#FFF4E6' : 'var(--color-surface)',
+                        border: `2px solid ${showWinner ? '#FFD8A8' : 'var(--color-border)'}`,
+                        boxShadow: showWinner ? '0 2px 12px rgba(255,180,60,0.18)' : undefined,
                       }}>
                         {/* Photo */}
                         <div
@@ -298,7 +300,7 @@ export function VotingPage() {
                               🍽️
                             </div>
                           )}
-                          {entry.isWinner && (
+                          {showWinner && (
                             <div style={{ position: 'absolute', top: '8px', right: '8px', background: '#FFD8A8', borderRadius: '999px', padding: '2px 8px', fontSize: '0.7rem', fontWeight: 800, color: '#7A4100' }}>
                               👑 Owner
                             </div>

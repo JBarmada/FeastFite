@@ -45,8 +45,9 @@ export function MapPage() {
         const authToken = AUTH_DISABLED ? 'dev-bypass-token' : token;
         if (!authToken) return;
         await territoryApi.batteringRam(territory.id, authToken);
-        setMapRefreshKey((v) => v + 1);
         window.dispatchEvent(new Event('feastfite:balance'));
+        // Lock is broken — send the user to upload their challenge dish
+        navigate('/voting', { state: { territory } });
       } catch (error) {
         console.error('Failed to use battering ram', error);
         setActionError(extractErrorMessage(error, 'Could not use Battering Ram. Try again.'));

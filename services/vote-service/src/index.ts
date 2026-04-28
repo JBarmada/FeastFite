@@ -13,7 +13,8 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = process.env['PORT'] ?? 3003;
 const SERVICE_NAME = 'vote-service';
-const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60; // keep results in Redis for 7 days
+const VOTING_WINDOW_MS = 10 * 60 * 1000;       // 10-minute voting window
 const VOTE_REDIS_PREFIX = 'vote-service';
 const RABBITMQ_EXCHANGE = process.env['RABBITMQ_EXCHANGE'] ?? 'feastfite.events';
 const MINIO_BUCKET_PHOTOS = process.env['MINIO_BUCKET_PHOTOS'] ?? 'fight-photos';
@@ -179,7 +180,7 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
 
   const now = Date.now();
   const sessionId = crypto.randomUUID();
-  const farFuture = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const endsAt = new Date(now + VOTING_WINDOW_MS).toISOString();
 
   const candidates: VoteCandidate[] = [
     {
@@ -211,7 +212,7 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
     createdBy: challengerId ?? 'demo-user',
     createdAt: new Date(now).toISOString(),
     startedAt: new Date(now).toISOString(),
-    endsAt: farFuture,
+    endsAt,
     completedAt: null,
     winnerId: null,
     winnerPhotoKey: null,
@@ -223,6 +224,9 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
   await saveSession(session);
   await redis.set(`${VOTE_REDIS_PREFIX}:territory:active:${territoryId}`, sessionId, 'EX', SESSION_TTL_SECONDS);
   void emitSessionUpdate(session);
+
+  // Auto-finalize when the 10-minute window closes
+  setTimeout(() => { void finalizeSession(sessionId); }, VOTING_WINDOW_MS);
 
   return res.status(201).json({
     session: await serializeSession(session),
@@ -324,13 +328,22 @@ app.post('/api/vote/votes/sessions/:sessionId/vote', async (req, res) => {
   if (!session) return res.status(404).json({ message: 'Voting session not found.' });
   if (session.status !== 'active') return res.status(409).json({ message: 'Voting session is no longer active.' });
 
+  if (new Date(session.endsAt) <= new Date()) {
+    void finalizeSession(session.id);
+    return res.status(409).json({ message: 'Time\'s up — this food fight is over!' });
+  }
+
   const alreadyRated: string[] = session.votesByUser[userId] ?? [];
-  if (alreadyRated.length > 0) {
-    return res.status(409).json({ message: 'You already voted in this fite.', session: await serializeSession(session) });
+  if (alreadyRated.includes(candidateId)) {
+    return res.status(409).json({ message: 'You already rated this dish.', session: await serializeSession(session) });
   }
 
   const candidate = session.candidates.find((entry) => entry.id === candidateId);
   if (!candidate) return res.status(400).json({ message: 'Candidate not found in session.' });
+
+  if (candidate.userId === userId) {
+    return res.status(403).json({ message: 'You cannot rate your own dish.' });
+  }
 
   candidate.votes += 1;
   candidate.totalRating += ratingValue;

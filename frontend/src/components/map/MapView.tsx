@@ -24,7 +24,23 @@ const HAT_EMOJI: Record<MonsterHat, string> = {
   burger: '🍔', donut: '🍩', taco: '🌮', cone: '🍦', sushi: '🍣', ramen: '🍜',
 };
 
+// Expanded food emoji pool — each territory gets its own variety based on territory ID
+const TERRITORY_FOOD_EMOJIS = [
+  '🍔', '🌮', '🍕', '🍣', '🍜', '🍩', '🍦', '🌯', '🥪', '🍱',
+  '🧆', '🥗', '🍛', '🥘', '🍝', '🥙', '🌽', '🍗', '🥩', '🍟',
+  '🧇', '🥞', '🌶️', '🫔', '🥟', '🍤', '🦑', '🍦', '🍧', '🎂',
+  '🧁', '🍰', '🍮', '🍭', '🍬', '🍫', '🍿', '🧀', '🫕', '🥨',
+];
+
+function foodEmojiForTerritory(territoryId: string): string {
+  let h = 0;
+  for (let i = 0; i < territoryId.length; i++) h = (h * 31 + territoryId.charCodeAt(i)) >>> 0;
+  return TERRITORY_FOOD_EMOJIS[h % TERRITORY_FOOD_EMOJIS.length];
+}
+
 function hatForOwner(id: string): MonsterHat {
+  const saved = localStorage.getItem(`grub-hat-${id}`);
+  if (saved && HAT_CYCLE.includes(saved as MonsterHat)) return saved as MonsterHat;
   return HAT_CYCLE[hashToIndex(id) % HAT_CYCLE.length];
 }
 
@@ -43,8 +59,8 @@ function geoJsonCentroid(geoJson: unknown): [number, number] | null {
 
 // ── Monster DivIcon ───────────────────────────────────────────────────────────
 
-function createMonsterIcon(color: string, hat: MonsterHat, isLocked: boolean) {
-  const emoji = HAT_EMOJI[hat];
+function createMonsterIcon(color: string, hat: MonsterHat, isLocked: boolean, overrideEmoji?: string) {
+  const emoji = overrideEmoji ?? HAT_EMOJI[hat];
   const lockDot = isLocked
     ? `<div style="position:absolute;top:-4px;right:-4px;width:17px;height:17px;border-radius:50%;background:${colors.accent};border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:8px;line-height:1">🔒</div>`
     : '';
@@ -57,10 +73,10 @@ function createMonsterIcon(color: string, hat: MonsterHat, isLocked: boolean) {
 type TerritoryState = 'unclaimed' | 'voting' | 'locked' | 'claimed';
 
 function deriveState(t: Territory, isVotingNow: boolean): TerritoryState {
-  if (isVotingNow) return 'voting';
   const isLocked = !!t.lockedUntil && new Date(t.lockedUntil) > new Date();
-  if (!t.ownerId) return 'unclaimed';
   if (isLocked) return 'locked';
+  if (isVotingNow) return 'voting';
+  if (!t.ownerId) return 'unclaimed';
   return 'claimed';
 }
 
@@ -80,8 +96,8 @@ function polygonStyle(territory: Territory, isSelected: boolean, isVotingNow: bo
     return { fillColor: territoryColors.locked.fillColor, fillOpacity: 1, color: territoryColors.locked.color, weight: baseWeight, dashArray: dash };
   }
 
-  const palette = getPlayerColorByIndex(hashToIndex(territory.ownerId!));
-  return { fillColor: palette.fill, fillOpacity: 1, color: palette.solid, weight: baseWeight, dashArray: dash };
+  // claimed (no shield) → always pink so other players can see it's challengeable
+  return { fillColor: territoryColors.claimed.fillColor, fillOpacity: 1, color: territoryColors.claimed.color, weight: baseWeight, dashArray: dash };
 }
 
 // ── BBoxLoader ────────────────────────────────────────────────────────────────
@@ -290,11 +306,13 @@ export function MapView({ onClaim, refreshKey }: MapViewProps) {
           const hat = hatForOwner(territory.ownerId!);
           const isLocked = !!territory.lockedUntil && new Date(territory.lockedUntil) > new Date();
           const isVotingNow = votingTerritoryIds.has(territory.id);
+          // Use territory ID for food emoji variety — each spot gets its own dish
+          const foodEmoji = foodEmojiForTerritory(territory.id);
           return (
             <Marker
               key={`flag-${territory.id}`}
               position={centroid}
-              icon={createMonsterIcon(palette.solid, hat, isLocked && !isVotingNow)}
+              icon={createMonsterIcon(palette.solid, hat, isLocked && !isVotingNow, foodEmoji)}
               eventHandlers={{ click: () => setSelected(territory) }}
             />
           );

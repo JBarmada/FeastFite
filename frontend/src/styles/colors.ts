@@ -62,6 +62,10 @@ export const territoryColors = {
     fillColor: 'rgba(0, 200, 224, 0.40)',
     color:     '#00C8E0',
   },
+  claimed: {
+    fillColor: 'rgba(255, 79, 163, 0.45)',
+    color:     '#FF4FA3',
+  },
 } as const;
 
 // ── Player colors (8 candy flavors) ──────────────────────────────

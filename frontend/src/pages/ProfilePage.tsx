@@ -72,7 +72,11 @@ export function ProfilePage() {
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [loadingGallery, setLoadingGallery] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const [selectedHat, setSelectedHat] = useState<MonsterHat>('donut');
+  const hatKey = `grub-hat-${userId || 'default'}`;
+  const [selectedHat, setSelectedHat] = useState<MonsterHat>(() => {
+    const saved = localStorage.getItem(hatKey);
+    return (HAT_CYCLE.includes(saved as MonsterHat) ? saved : 'donut') as MonsterHat;
+  });
 
   const displayName = AUTH_DISABLED ? 'Monster Grubby' : (user?.username ?? 'Food Monster');
   const monsterColor = playerColors[hashToIndex(userId || 'default')].solid;
@@ -192,7 +196,7 @@ export function ProfilePage() {
                   {HAT_CYCLE.map((h) => (
                     <button
                       key={h}
-                      onClick={() => setSelectedHat(h)}
+                      onClick={() => { setSelectedHat(h); localStorage.setItem(hatKey, h); }}
                       style={{
                         width: 44, height: 44, borderRadius: 10, cursor: 'pointer', padding: 0, border: 'none',
                         background: h === selectedHat ? colors.primaryLight : colors.surfaceRaised,
