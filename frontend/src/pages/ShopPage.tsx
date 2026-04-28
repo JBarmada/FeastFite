@@ -136,6 +136,27 @@ export function ShopPage() {
     }
   }
 
+  const [usingId, setUsingId] = useState<string | null>(null);
+  const [useSuccess, setUseSuccess] = useState<string | null>(null);
+
+  async function handleUse(itemId: string) {
+    if (!token) return;
+    setUsingId(itemId);
+    setError(null);
+    setUseSuccess(null);
+    try {
+      await economyApi.useItem(token, itemId);
+      await loadAuthSlice();
+      setUseSuccess(itemId);
+      setTimeout(() => setUseSuccess(null), 3000);
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { error?: string } } };
+      setError(ax.response?.data?.error ?? 'Could not activate item');
+    } finally {
+      setUsingId(null);
+    }
+  }
+
   const filteredItems = activeTab === 'all'
     ? items
     : items.filter(item => (ITEM_META[item.id]?.category ?? 'all') === activeTab);
@@ -213,6 +234,9 @@ export function ShopPage() {
               const canAfford = !!(isAuthenticated && token && balance !== null && balance >= item.pricePoints);
               const isBuying = buyingId === item.id;
               const owned = inventory[item.id] ?? 0;
+              const isBoost = item.itemType === 'boost' || item.id === 'double_points';
+              const isUsing = usingId === item.id;
+              const justUsed = useSuccess === item.id;
 
               return (
                 <div key={item.id} style={{
@@ -295,6 +319,24 @@ export function ShopPage() {
                       </button>
                     )}
                   </div>
+
+                  {isAuthenticated && isBoost && owned > 0 && (
+                    <button
+                      type="button"
+                      disabled={isUsing}
+                      onClick={() => void handleUse(item.id)}
+                      style={{
+                        marginTop: '10px', width: '100%', padding: '8px', borderRadius: '999px', border: 'none',
+                        background: justUsed ? '#2EB86B' : 'linear-gradient(135deg, #FFD700, #FFA500)',
+                        color: justUsed ? '#fff' : '#5A3000',
+                        fontWeight: 800, fontSize: '0.82rem',
+                        cursor: isUsing ? 'not-allowed' : 'pointer',
+                        transition: 'background 0.3s',
+                      }}
+                    >
+                      {isUsing ? '…' : justUsed ? '✓ Activated!' : '⚡ Activate (×' + owned + ' owned)'}
+                    </button>
+                  )}
                 </div>
               );
             })}

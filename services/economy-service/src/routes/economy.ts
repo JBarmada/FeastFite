@@ -211,7 +211,7 @@ economyRouter.post('/inventory/use', requireAuth, async (req: Request, res: Resp
     return;
   }
 
-  const USABLE_ITEMS = new Set(['battering_ram', 'territory_shield']);
+  const USABLE_ITEMS = new Set(['battering_ram', 'territory_shield', 'double_points']);
   if (!USABLE_ITEMS.has(itemId)) {
     res.status(400).json({ error: 'Item cannot be used from inventory' });
     return;
@@ -231,7 +231,7 @@ economyRouter.post('/inventory/use', requireAuth, async (req: Request, res: Resp
       res.status(404).json({ error: 'Unknown item' });
       return;
     }
-    if (typeRows[0].item_type !== 'consumable') {
+    if (typeRows[0].item_type !== 'consumable' && typeRows[0].item_type !== 'boost') {
       await client.query('ROLLBACK');
       res.status(400).json({ error: 'This item is not consumed from inventory' });
       return;

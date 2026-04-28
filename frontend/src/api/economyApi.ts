@@ -48,4 +48,13 @@ export const economyApi = {
     );
     return data;
   },
+
+  async useItem(token: string, itemId: string): Promise<{ success: boolean; itemId: string; remaining: number }> {
+    const { data } = await client.post<{ success: boolean; itemId: string; remaining: number }>(
+      '/inventory/use',
+      { itemId },
+      { headers: authHeader(token) }
+    );
+    return data;
+  },
 };

@@ -763,9 +763,9 @@ function LiveFitesLanding({ navigate, currentUserId }: LiveFitesLandingProps) {
     }, 5_000);
   }
 
-  async function handleVote(sessionId: string, candidateId: string): Promise<VoteSession | null> {
+  async function handleVote(sessionId: string, candidateId: string, rating: number): Promise<VoteSession | null> {
     try {
-      const updated = await voteApi.submitVote(sessionId, { userId: currentUserId, candidateId, rating: 5 });
+      const updated = await voteApi.submitVote(sessionId, { userId: currentUserId, candidateId, rating });
       setSessions((prev) => prev.map((s) => {
         if (s.id !== sessionId) return s;
         const name = (updated.territoryName && updated.territoryName !== updated.territoryId)
@@ -818,7 +818,7 @@ function LiveFitesLanding({ navigate, currentUserId }: LiveFitesLandingProps) {
                 name={s.territoryName || `Block ${s.territoryId.slice(0, 4).toUpperCase()}`}
                 blockLabel={`BLOCK ${String(i + 1).padStart(2, '0')}`}
                 currentUserId={currentUserId}
-                onVote={handleVote}
+                onVote={(sid, cid, rating) => handleVote(sid, cid, rating)}
                 onCompleted={handleCompleted}
               />
             ))
@@ -892,7 +892,7 @@ interface FeaturedFiteProps {
   name: string;
   blockLabel: string;
   currentUserId: string;
-  onVote: (sessionId: string, candidateId: string) => Promise<VoteSession | null>;
+  onVote: (sessionId: string, candidateId: string, rating: number) => Promise<VoteSession | null>;
   onCompleted?: (sessionId: string) => void;
 }
 
@@ -900,6 +900,8 @@ function FeaturedFite({ session, name, blockLabel, currentUserId, onVote, onComp
   const [voting, setVoting] = useState<string | null>(null);
   const [localSession, setLocalSession] = useState(session);
   const [tick, setTick] = useState(0);
+  const [ratingCardId, setRatingCardId] = useState<string | null>(null);
+  const [hoverRating, setHoverRating] = useState<{ candidateId: string; star: number } | null>(null);
 
   useEffect(() => { setLocalSession(session); }, [session]);
 
@@ -921,9 +923,8 @@ function FeaturedFite({ session, name, blockLabel, currentUserId, onVote, onComp
 
   void tick;
 
-  const hasVoted = currentUserId
-    ? (localSession.votesByUser[currentUserId]?.length ?? 0) > 0
-    : false;
+  const myRatedIds: string[] = currentUserId ? (localSession.votesByUser[currentUserId] ?? []) : [];
+  const hasVotedForAny = myRatedIds.length > 0;
 
   const maxVotes = Math.max(...localSession.candidates.map((c) => c.votes), 1);
   const leaderId = localSession.candidates.reduce(
@@ -931,13 +932,15 @@ function FeaturedFite({ session, name, blockLabel, currentUserId, onVote, onComp
     localSession.candidates[0],
   )?.id;
 
-  async function handleVote(candidateId: string) {
-    if (hasVoted || voting !== null) return;
+  async function handleVote(candidateId: string, rating: number) {
+    if (voting !== null) return;
     const target = localSession.candidates.find((c) => c.id === candidateId);
     if (target && currentUserId && target.userId === currentUserId) return;
+    if (myRatedIds.includes(candidateId)) return;
     setVoting(candidateId);
+    setRatingCardId(null);
     try {
-      const updated = await onVote(session.id, candidateId);
+      const updated = await onVote(session.id, candidateId, rating);
       if (updated) setLocalSession(updated);
     } finally { setVoting(null); }
   }
@@ -994,13 +997,13 @@ function FeaturedFite({ session, name, blockLabel, currentUserId, onVote, onComp
       </div>
 
       {/* Voted banner */}
-      {hasVoted && (
+      {hasVotedForAny && (
         <div style={{
           background: '#F0FFF4', border: '1.5px solid #2EB86B', borderRadius: '10px',
           padding: '8px 14px', marginBottom: '12px', fontSize: '0.8rem',
           color: '#1A6641', fontWeight: 700, textAlign: 'center',
         }}>
-          ✓ You voted in this fite!
+          ✓ You rated {myRatedIds.length} dish{myRatedIds.length !== 1 ? 'es' : ''} — keep rating the others!
         </div>
       )}
 
@@ -1009,11 +1012,13 @@ function FeaturedFite({ session, name, blockLabel, currentUserId, onVote, onComp
         {localSession.candidates.slice(0, 3).map((c, i) => {
           const color = CANDIDATE_COLORS[i % CANDIDATE_COLORS.length]!;
           const isLeading = c.id === leaderId && c.votes > 0;
-          const isVotedFor = currentUserId ? (localSession.votesByUser[currentUserId] ?? []).includes(c.id) : false;
+          const isVotedFor = myRatedIds.includes(c.id);
           const isOwnDish = Boolean(currentUserId && c.userId === currentUserId);
           const rating = avgRating(c);
           const barPct = maxVotes > 0 ? (c.votes / maxVotes) * 100 : 0;
-          const buttonDisabled = hasVoted || voting !== null || isOwnDish;
+          const buttonDisabled = voting !== null || isOwnDish || isVotedFor;
+          const showRatingPicker = ratingCardId === c.id;
+          const myRatingForThis = localSession.ratingByUser?.[currentUserId]?.[c.id] ?? null;
 
           return (
             <div key={c.id} style={{
@@ -1075,10 +1080,10 @@ function FeaturedFite({ session, name, blockLabel, currentUserId, onVote, onComp
                   <div style={{ height: '100%', width: `${barPct}%`, background: isVotedFor ? '#2EB86B' : color.bar, borderRadius: '999px', transition: 'width 0.3s' }} />
                 </div>
 
-                {/* Vote button — own dish is not votable */}
+                {/* Vote area — own dish is not votable */}
                 {isOwnDish ? (
                   <div
-                    title="You can’t vote for your own dish"
+                    title="You can't vote for your own dish"
                     style={{
                       width: '100%',
                       borderRadius: '999px',
@@ -1094,14 +1099,59 @@ function FeaturedFite({ session, name, blockLabel, currentUserId, onVote, onComp
                   >
                     Your dish — voting disabled
                   </div>
+                ) : isVotedFor ? (
+                  <div style={{
+                    width: '100%', borderRadius: '999px', padding: '6px 0',
+                    background: '#2EB86B', color: '#fff',
+                    fontWeight: 800, fontSize: '0.75rem', textAlign: 'center',
+                  }}>
+                    ✓ Rated {myRatingForThis != null ? `${myRatingForThis}/10` : ''}
+                  </div>
+                ) : showRatingPicker ? (
+                  <div>
+                    <p style={{ margin: '0 0 4px', fontSize: '0.68rem', color: '#7A5490', fontWeight: 700, textAlign: 'center' }}>
+                      Rate 1–10:
+                    </p>
+                    <div style={{ display: 'flex', gap: '1px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                      {[1,2,3,4,5,6,7,8,9,10].map((star) => {
+                        const isHovered = hoverRating?.candidateId === c.id && star <= hoverRating.star;
+                        return (
+                          <button
+                            key={star}
+                            type="button"
+                            disabled={voting === c.id}
+                            title={`Rate ${star}/10`}
+                            style={{
+                              background: 'none', border: 'none',
+                              cursor: voting === c.id ? 'not-allowed' : 'pointer',
+                              fontSize: '0.9rem', padding: '1px', lineHeight: 1,
+                              opacity: voting === c.id ? 0.5 : 1,
+                            }}
+                            onMouseEnter={() => setHoverRating({ candidateId: c.id, star })}
+                            onMouseLeave={() => setHoverRating(null)}
+                            onClick={() => void handleVote(c.id, star)}
+                          >
+                            {isHovered ? '⭐' : '☆'}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRatingCardId(null)}
+                      style={{ marginTop: '3px', width: '100%', background: 'none', border: 'none', cursor: 'pointer', color: '#9A78A0', fontSize: '0.65rem', fontWeight: 600 }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 ) : (
                   <button
                     type="button"
-                    onClick={() => void handleVote(c.id)}
+                    onClick={() => setRatingCardId(c.id)}
                     disabled={buttonDisabled}
                     style={{
                       width: '100%',
-                      background: isVotedFor ? '#2EB86B' : buttonDisabled ? '#CCC' : color.button,
+                      background: buttonDisabled ? '#CCC' : color.button,
                       color: '#fff',
                       border: 'none', borderRadius: '999px', padding: '6px 0',
                       fontWeight: 800, fontSize: '0.75rem',
@@ -1110,7 +1160,7 @@ function FeaturedFite({ session, name, blockLabel, currentUserId, onVote, onComp
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
                     }}
                   >
-                    {voting === c.id ? '…' : isVotedFor ? '✓ Voted' : hasVoted ? 'Voted' : '♥ Vote'}
+                    {voting === c.id ? '…' : '♥ Vote'}
                   </button>
                 )}
               </div>

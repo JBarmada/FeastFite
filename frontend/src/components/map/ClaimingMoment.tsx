@@ -230,7 +230,7 @@ export function ClaimingMoment({ data, onDismiss }: ClaimingMomentProps) {
           letterSpacing: '0.02em',
         }}
       >
-        Back to the candy map
+        Back to Conquering
       </button>
     </div>
   );
