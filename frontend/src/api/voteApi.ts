@@ -5,12 +5,9 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-export interface UploadUrlResponse {
+export interface UploadResponse {
   bucket: string;
   photoKey: string;
-  uploadUrl: string;
-  expiresInSeconds: number;
-  contentType: string;
 }
 
 export interface VoteCandidate {
@@ -42,21 +39,11 @@ export interface VoteSession {
 export const voteApi = {
   client,
 
-  async createUploadUrl(file: File) {
-    const response = await client.post<UploadUrlResponse>('/votes/upload-url', {
-      fileName: file.name,
-      contentType: file.type || 'image/jpeg',
+  async uploadFile(file: File): Promise<UploadResponse> {
+    const response = await client.post<UploadResponse>('/votes/upload', file, {
+      headers: { 'Content-Type': file.type || 'image/jpeg' },
     });
     return response.data;
-  },
-
-  async uploadPhoto(uploadUrl: string, file: File) {
-    const response = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type || 'image/jpeg' },
-      body: file,
-    });
-    if (!response.ok) throw new Error(`Upload failed with status ${response.status}`);
   },
 
   async createSession(input: {

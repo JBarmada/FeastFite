@@ -116,30 +116,36 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: SERVICE_NAME });
 });
 
-// ── Upload URL ────────────────────────────────────────────────────────────────
+// ── Direct upload (replaces presigned PUT — MinIO stays internal) ─────────────
 
-app.post('/api/vote/votes/upload-url', async (req, res) => {
-  const { fileName, contentType }: UploadUrlRequest = req.body ?? {};
+app.post(
+  '/api/vote/votes/upload',
+  express.raw({ type: ['image/*', 'application/octet-stream'], limit: '20mb' }),
+  async (req, res) => {
+    const rawContentType = req.headers['content-type'] ?? 'image/jpeg';
+    const mimeType = rawContentType.split(';')[0]?.trim() ?? 'image/jpeg';
+    const extMap: Record<string, string> = { 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/heic': '.heic' };
+    const extension = extMap[mimeType] ?? '.jpg';
+    const photoKey = `territories/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}${extension}`;
+    const buffer = req.body as Buffer;
 
-  if (!fileName || !contentType) {
-    return res.status(400).json({ message: 'fileName and contentType are required.' });
-  }
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+      return res.status(400).json({ message: 'No image data received.' });
+    }
 
-  const extension = getFileExtension(fileName);
-  const photoKey = `territories/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}${extension}`;
+    try {
+      await minio.putObject(MINIO_BUCKET_PHOTOS, photoKey, buffer, buffer.length, { 'Content-Type': mimeType });
+      return res.status(200).json({ bucket: MINIO_BUCKET_PHOTOS, photoKey });
+    } catch (error) {
+      console.error('[vote-service] failed to upload photo', error);
+      return res.status(500).json({ message: 'Failed to upload photo.' });
+    }
+  },
+);
 
-  try {
-    const uploadUrl = await minio.presignedPutObject(MINIO_BUCKET_PHOTOS, photoKey, 60 * 10);
-    return res.status(200).json({ bucket: MINIO_BUCKET_PHOTOS, photoKey, uploadUrl, expiresInSeconds: 600, contentType });
-  } catch (error) {
-    console.error('[vote-service] failed to generate upload URL', error);
-    return res.status(500).json({ message: 'Failed to generate upload URL.' });
-  }
-});
+// ── Photo URL → proxy URL (no direct MinIO URLs reach the browser) ────────────
 
-// ── Photo URL (presigned read) ────────────────────────────────────────────────
-
-app.get('/api/vote/votes/photo-url', async (req, res) => {
+app.get('/api/vote/votes/photo-url', (req, res) => {
   const photoKey = req.query['key'];
   if (typeof photoKey !== 'string' || !photoKey) {
     return res.status(400).json({ message: 'key query param required.' });
@@ -149,11 +155,26 @@ app.get('/api/vote/votes/photo-url', async (req, res) => {
     return res.json({ url: buildFallbackImageDataUrl(photoKey) });
   }
 
+  return res.json({ url: `/api/vote/votes/photo-proxy?key=${encodeURIComponent(photoKey)}` });
+});
+
+// ── Photo proxy (streams from MinIO, serves over HTTPS) ───────────────────────
+
+app.get('/api/vote/votes/photo-proxy', async (req, res) => {
+  const photoKey = req.query['key'];
+  if (typeof photoKey !== 'string' || !photoKey) {
+    return res.status(400).json({ message: 'key required.' });
+  }
+
   try {
-    const url = await minio.presignedGetObject(MINIO_BUCKET_PHOTOS, photoKey, 60 * 60);
-    return res.json({ url });
+    const stat = await minio.statObject(MINIO_BUCKET_PHOTOS, photoKey);
+    const contentType = (stat.metaData?.['content-type'] as string | undefined) ?? 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const stream = await minio.getObject(MINIO_BUCKET_PHOTOS, photoKey);
+    stream.pipe(res);
   } catch {
-    return res.json({ url: buildFallbackImageDataUrl(photoKey) });
+    return res.status(404).json({ message: 'Photo not found.' });
   }
 });
 
@@ -221,7 +242,7 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
   void emitSessionUpdate(session);
 
   return res.status(201).json({
-    session: await serializeSession(session),
+    session: serializeSession(session),
     websocketPath: '/ws/vote',
   });
 });
@@ -241,7 +262,7 @@ app.post('/api/vote/votes/sessions/:sessionId/candidates', async (req, res) => {
 
   const alreadyIn = session.candidates.some((c) => c.userId === userId);
   if (alreadyIn) {
-    return res.status(409).json({ message: 'You already have a dish in this session.', session: await serializeSession(session) });
+    return res.status(409).json({ message: 'You already have a dish in this session.', session: serializeSession(session) });
   }
 
   const candidateId = `candidate-${userId}-${Date.now()}`;
@@ -249,7 +270,7 @@ app.post('/api/vote/votes/sessions/:sessionId/candidates', async (req, res) => {
   await saveSession(session);
   void emitSessionUpdate(session);
 
-  return res.status(200).json({ session: await serializeSession(session) });
+  return res.status(200).json({ session: serializeSession(session) });
 });
 
 // ── Get session by territory ──────────────────────────────────────────────────
@@ -264,7 +285,7 @@ app.get('/api/vote/votes/sessions/by-territory/:territoryId', async (req, res) =
     await redis.del(`${VOTE_REDIS_PREFIX}:territory:active:${territoryId}`);
     return res.status(404).json({ message: 'No active session for this territory.' });
   }
-  return res.status(200).json({ session: await serializeSession(session) });
+  return res.status(200).json({ session: serializeSession(session) });
 });
 
 // ── Get session by id ─────────────────────────────────────────────────────────
@@ -272,7 +293,7 @@ app.get('/api/vote/votes/sessions/by-territory/:territoryId', async (req, res) =
 app.get('/api/vote/votes/sessions/:sessionId', async (req, res) => {
   const session = await loadSession(req.params['sessionId']!);
   if (!session) return res.status(404).json({ message: 'Voting session not found.' });
-  return res.status(200).json({ session: await serializeSession(session) });
+  return res.status(200).json({ session: serializeSession(session) });
 });
 
 // ── Submit vote ───────────────────────────────────────────────────────────────
@@ -294,7 +315,7 @@ app.post('/api/vote/votes/sessions/:sessionId/vote', async (req, res) => {
 
   const alreadyRated: string[] = session.votesByUser[userId] ?? [];
   if (alreadyRated.includes(candidateId)) {
-    return res.status(409).json({ message: 'You already rated this dish.', session: await serializeSession(session) });
+    return res.status(409).json({ message: 'You already rated this dish.', session: serializeSession(session) });
   }
 
   const candidate = session.candidates.find((entry) => entry.id === candidateId);
@@ -327,7 +348,7 @@ app.post('/api/vote/votes/sessions/:sessionId/vote', async (req, res) => {
     void finalizeSession(session.id);
   }
 
-  return res.status(200).json({ session: await serializeSession(session) });
+  return res.status(200).json({ session: serializeSession(session) });
 });
 
 // ── Manual finalize ───────────────────────────────────────────────────────────
@@ -342,7 +363,7 @@ app.post('/api/vote/votes/sessions/:sessionId/finalize', async (req, res) => {
 
   await finalizeSession(session.id);
   const updated = await loadSession(session.id);
-  return res.status(200).json({ session: updated ? await serializeSession(updated) : null });
+  return res.status(200).json({ session: updated ? serializeSession(updated) : null });
 });
 
 // ── Socket.io ─────────────────────────────────────────────────────────────────
@@ -356,7 +377,7 @@ io.on('connection', (socket) => {
   socket.on('join-session', async (requestedSessionId: string) => {
     socket.join(getRoomName(requestedSessionId));
     const session = await loadSession(requestedSessionId);
-    if (session) socket.emit('session:update', await serializeSession(session));
+    if (session) socket.emit('session:update', serializeSession(session));
   });
 });
 
@@ -395,25 +416,19 @@ async function ensureMinioBucket(): Promise<void> {
   }
 }
 
-async function serializeSession(session: VoteSessionRecord): Promise<ClientVoteSession> {
+function serializeSession(session: VoteSessionRecord): ClientVoteSession {
   return {
     ...session,
-    candidates: await Promise.all(
-      session.candidates.map(async (candidate) => ({
-        ...candidate,
-        photoUrl: await resolveCandidatePhotoUrl(candidate),
-      }))
-    ),
+    candidates: session.candidates.map((candidate) => ({
+      ...candidate,
+      photoUrl: resolveCandidatePhotoUrl(candidate),
+    })),
   };
 }
 
-async function resolveCandidatePhotoUrl(candidate: VoteCandidate): Promise<string> {
+function resolveCandidatePhotoUrl(candidate: VoteCandidate): string {
   if (candidate.photoKey.startsWith('seed/')) return buildFallbackImageDataUrl(candidate.displayName);
-  try {
-    return await minio.presignedGetObject(MINIO_BUCKET_PHOTOS, candidate.photoKey, 60 * 60);
-  } catch {
-    return buildFallbackImageDataUrl(candidate.displayName);
-  }
+  return `/api/vote/votes/photo-proxy?key=${encodeURIComponent(candidate.photoKey)}`;
 }
 
 function buildFallbackImageDataUrl(label: string): string {
@@ -500,7 +515,7 @@ async function publishEvent(routingKey: string, payload: VoteWinnerDeclaredEvent
 }
 
 async function emitSessionUpdate(session: VoteSessionRecord): Promise<void> {
-  io.to(getRoomName(session.id)).emit('session:update', await serializeSession(session));
+  io.to(getRoomName(session.id)).emit('session:update', serializeSession(session));
 }
 
 void bootstrap()

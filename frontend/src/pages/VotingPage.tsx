@@ -78,20 +78,19 @@ export function VotingPage() {
     setUploadError(null);
 
     try {
-      const upload = await voteApi.createUploadUrl(selectedFile);
-      await voteApi.uploadPhoto(upload.uploadUrl, selectedFile);
+      const { photoKey } = await voteApi.uploadFile(selectedFile);
 
       if (!isContested) {
         // Uncontested — direct claim
         await territoryApi.claim(territory.id, authToken, {
-          photoKey: upload.photoKey,
+          photoKey,
           displayName: currentUserName,
         });
         setClaimed(true);
       } else if (activeSession) {
         // Session exists — add as new candidate
         const updated = await voteApi.addCandidate(activeSession.id, {
-          photoKey: upload.photoKey,
+          photoKey,
           userId: currentUserId,
           displayName: currentUserName,
         });
@@ -101,7 +100,7 @@ export function VotingPage() {
         // Contested, no session yet — create one
         const { session } = await voteApi.createSession({
           territoryId: territory.id,
-          photoKey: upload.photoKey,
+          photoKey,
           challengerId: currentUserId,
           challengerName: currentUserName,
           defenderId: territory.ownerId ?? undefined,
@@ -208,7 +207,11 @@ export function VotingPage() {
                   </label>
 
                   {previewUrl && (
-                    <div className="preview-frame">
+                    <div
+                      className="preview-frame"
+                      onClick={() => setLightboxSrc(previewUrl)}
+                      style={{ cursor: 'zoom-in' }}
+                    >
                       <img src={previewUrl} alt="Meal preview" className="preview-image" />
                     </div>
                   )}
