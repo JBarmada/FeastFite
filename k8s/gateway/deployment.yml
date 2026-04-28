@@ -40,6 +40,8 @@ spec:
               value: "0.0.0.0:8001"
             - name: KONG_LOG_LEVEL
               value: warn
+            - name: KONG_NGINX_HTTP_CLIENT_MAX_BODY_SIZE
+              value: "25m"
           resources:
             requests:
               cpu: 500m
