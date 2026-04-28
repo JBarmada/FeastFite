@@ -127,11 +127,41 @@ export function Navbar() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         {isAuthenticated ? (
           <>
-            {/* Inventory */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <ItemIcon kind="shield" size={26} count={inventory.shield ?? 0} />
-              <ItemIcon kind="ram" size={26} count={inventory['battering-ram'] ?? inventory.ram ?? 0} />
-              <ItemIcon kind="boost" size={26} count={inventory['double-points'] ?? inventory.boost ?? 0} />
+            {/* Inventory pill */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                background: '#F3E8FF',
+                border: '2px solid #D8B4FE',
+                borderRadius: 999,
+                padding: '5px 14px',
+              }}
+            >
+              {[
+                { kind: 'shield' as const, qty: inventory['territory_shield'] ?? 0 },
+                { kind: 'ram' as const,    qty: inventory['battering_ram'] ?? 0 },
+                { kind: 'boost' as const,  qty: inventory['double_points'] ?? 0 },
+              ].map(({ kind, qty }, i) => (
+                <div key={kind} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {i > 0 && (
+                    <span style={{ width: 1, height: 18, background: '#D8B4FE', borderRadius: 1, marginRight: 4 }} />
+                  )}
+                  <ItemIcon kind={kind} size={22} />
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: '#7C3AED',
+                      minWidth: 10,
+                    }}
+                  >
+                    {qty}
+                  </span>
+                </div>
+              ))}
             </div>
 
             {/* Coins */}

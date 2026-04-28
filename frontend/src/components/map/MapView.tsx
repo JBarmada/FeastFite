@@ -8,6 +8,7 @@ import 'leaflet/dist/leaflet.css';
 
 import { MAP_CONFIG, TILE_PROVIDER } from '../../config/mapConfig';
 import { territoryApi, type BBox } from '../../api/territoryApi';
+import { voteApi } from '../../api/voteApi';
 import { getPlayerColorByIndex, playerColors, territoryColors, colors } from '../../styles/colors';
 import { TerritoryPanel } from './TerritoryPanel';
 import type { MonsterHat } from '../ui/Monster';
@@ -23,7 +24,23 @@ const HAT_EMOJI: Record<MonsterHat, string> = {
   burger: '🍔', donut: '🍩', taco: '🌮', cone: '🍦', sushi: '🍣', ramen: '🍜',
 };
 
+// Expanded food emoji pool — each territory gets its own variety based on territory ID
+const TERRITORY_FOOD_EMOJIS = [
+  '🍔', '🌮', '🍕', '🍣', '🍜', '🍩', '🍦', '🌯', '🥪', '🍱',
+  '🧆', '🥗', '🍛', '🥘', '🍝', '🥙', '🌽', '🍗', '🥩', '🍟',
+  '🧇', '🥞', '🌶️', '🫔', '🥟', '🍤', '🦑', '🍦', '🍧', '🎂',
+  '🧁', '🍰', '🍮', '🍭', '🍬', '🍫', '🍿', '🧀', '🫕', '🥨',
+];
+
+function foodEmojiForTerritory(territoryId: string): string {
+  let h = 0;
+  for (let i = 0; i < territoryId.length; i++) h = (h * 31 + territoryId.charCodeAt(i)) >>> 0;
+  return TERRITORY_FOOD_EMOJIS[h % TERRITORY_FOOD_EMOJIS.length];
+}
+
 function hatForOwner(id: string): MonsterHat {
+  const saved = localStorage.getItem(`grub-hat-${id}`);
+  if (saved && HAT_CYCLE.includes(saved as MonsterHat)) return saved as MonsterHat;
   return HAT_CYCLE[hashToIndex(id) % HAT_CYCLE.length];
 }
 
@@ -42,8 +59,8 @@ function geoJsonCentroid(geoJson: unknown): [number, number] | null {
 
 // ── Monster DivIcon ───────────────────────────────────────────────────────────
 
-function createMonsterIcon(color: string, hat: MonsterHat, isLocked: boolean) {
-  const emoji = HAT_EMOJI[hat];
+function createMonsterIcon(color: string, hat: MonsterHat, isLocked: boolean, overrideEmoji?: string) {
+  const emoji = overrideEmoji ?? HAT_EMOJI[hat];
   const lockDot = isLocked
     ? `<div style="position:absolute;top:-4px;right:-4px;width:17px;height:17px;border-radius:50%;background:${colors.accent};border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:8px;line-height:1">🔒</div>`
     : '';
@@ -55,28 +72,32 @@ function createMonsterIcon(color: string, hat: MonsterHat, isLocked: boolean) {
 
 type TerritoryState = 'unclaimed' | 'voting' | 'locked' | 'claimed';
 
-function deriveState(t: Territory): TerritoryState {
+function deriveState(t: Territory, isVotingNow: boolean): TerritoryState {
   const isLocked = !!t.lockedUntil && new Date(t.lockedUntil) > new Date();
-  if (!t.ownerId && isLocked) return 'voting';
-  if (!t.ownerId) return 'unclaimed';
   if (isLocked) return 'locked';
+  if (isVotingNow) return 'voting';
+  if (!t.ownerId) return 'unclaimed';
   return 'claimed';
 }
 
-function polygonStyle(territory: Territory, isSelected: boolean): PathOptions {
-  const state = deriveState(territory);
+function polygonStyle(territory: Territory, isSelected: boolean, isVotingNow: boolean): PathOptions {
+  const state = deriveState(territory, isVotingNow);
   const baseWeight = isSelected ? 5 : 3;
   const dash = isSelected ? '5 4' : undefined;
 
   if (state === 'voting') {
-    return { fillColor: territoryColors.voting.fillColor, fillOpacity: 1, color: territoryColors.voting.color, weight: baseWeight, dashArray: dash };
+    // Always dashed for voting — matches the legend's striped appearance
+    return { fillColor: territoryColors.voting.fillColor, fillOpacity: 1, color: territoryColors.voting.color, weight: baseWeight, dashArray: '8 6' };
   }
   if (state === 'unclaimed') {
     return { fillColor: territoryColors.unclaimed.fillColor, fillOpacity: 1, color: territoryColors.unclaimed.color, weight: baseWeight, dashArray: dash };
   }
+  if (state === 'locked') {
+    return { fillColor: territoryColors.locked.fillColor, fillOpacity: 1, color: territoryColors.locked.color, weight: baseWeight, dashArray: dash };
+  }
 
-  const palette = getPlayerColorByIndex(hashToIndex(territory.ownerId!));
-  return { fillColor: palette.fill, fillOpacity: 1, color: palette.solid, weight: baseWeight, dashArray: dash };
+  // claimed (no shield) → always pink so other players can see it's challengeable
+  return { fillColor: territoryColors.claimed.fillColor, fillOpacity: 1, color: territoryColors.claimed.color, weight: baseWeight, dashArray: dash };
 }
 
 // ── BBoxLoader ────────────────────────────────────────────────────────────────
@@ -214,7 +235,7 @@ function ZoomControls({ map }: { map: LMap | null }) {
 // ── MapView ───────────────────────────────────────────────────────────────────
 
 interface MapViewProps {
-  onClaim: (territory: Territory, intent: 'claim' | 'vote' | 'battering-ram') => void;
+  onClaim: (territory: Territory, intent: 'claim' | 'vote' | 'battering-ram' | 'shield') => void;
   refreshKey?: number;
 }
 
@@ -223,12 +244,19 @@ export function MapView({ onClaim, refreshKey }: MapViewProps) {
   const [selected, setSelected] = useState<Territory | null>(null);
   const [mapInstance, setMapInstance] = useState<LMap | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [votingTerritoryIds, setVotingTerritoryIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!selected) return;
     const fresh = territories.find((t) => t.id === selected.id) ?? null;
     setSelected(fresh);
   }, [territories, selected?.id]);
+
+  useEffect(() => {
+    voteApi.getActiveSessions()
+      .then((sessions) => setVotingTerritoryIds(new Set(sessions.map((s) => s.territoryId))))
+      .catch(() => {});
+  }, [refreshKey]);
 
   return (
     <div className="ff-map-view">
@@ -256,9 +284,9 @@ export function MapView({ onClaim, refreshKey }: MapViewProps) {
 
         {territories.map((territory) => (
           <GeoJSON
-            key={`${territory.id}-${String(territory.updatedAt)}-${selected?.id === territory.id}`}
+            key={`${territory.id}-${String(territory.updatedAt)}-${selected?.id === territory.id}-${votingTerritoryIds.has(territory.id)}`}
             data={territory.geoJson as Feature}
-            style={() => polygonStyle(territory, selected?.id === territory.id)}
+            style={() => polygonStyle(territory, selected?.id === territory.id, votingTerritoryIds.has(territory.id))}
             onEachFeature={(_feature: Feature, layer: Layer) => {
               layer.on('click', () => {
                 setSelected(territory);
@@ -277,11 +305,14 @@ export function MapView({ onClaim, refreshKey }: MapViewProps) {
           const palette = getPlayerColorByIndex(hashToIndex(territory.ownerId!));
           const hat = hatForOwner(territory.ownerId!);
           const isLocked = !!territory.lockedUntil && new Date(territory.lockedUntil) > new Date();
+          const isVotingNow = votingTerritoryIds.has(territory.id);
+          // Use territory ID for food emoji variety — each spot gets its own dish
+          const foodEmoji = foodEmojiForTerritory(territory.id);
           return (
             <Marker
               key={`flag-${territory.id}`}
               position={centroid}
-              icon={createMonsterIcon(palette.solid, hat, isLocked)}
+              icon={createMonsterIcon(palette.solid, hat, isLocked && !isVotingNow, foodEmoji)}
               eventHandlers={{ click: () => setSelected(territory) }}
             />
           );
@@ -319,6 +350,7 @@ export function MapView({ onClaim, refreshKey }: MapViewProps) {
         onClose={() => setSelected(null)}
         onClaim={onClaim}
         ownerName={selected?.ownerName ?? undefined}
+        isVoting={selected ? votingTerritoryIds.has(selected.id) : false}
       />
     </div>
   );

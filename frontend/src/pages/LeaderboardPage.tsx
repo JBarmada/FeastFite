@@ -1,275 +1,161 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Navbar } from '../components/layout/Navbar';
-import { profileApi } from '../api/profileApi';
-import { territoryApi, type ClaimHistoryEntry } from '../api/territoryApi';
-import type { Territory } from '@feastfite/shared';
-
-interface LeaderboardUser {
-  userId: string;
-  totalPoints?: number;
-  currentStreak?: number;
-  territoriesCount?: number;
-  username?: string;
-}
+import { Monster, type MonsterHat } from '../components/ui/Monster';
+import { useAuth } from '../contexts/AuthContext';
 
 const economyClient = axios.create({ baseURL: '/api/economy' });
+const authClient    = axios.create({ baseURL: '/api/auth' });
+const territoryClient = axios.create({ baseURL: '/api/territory' });
 
-const PODIUM_STYLES = [
-  {
-    bg: 'linear-gradient(135deg, #FFE566 0%, #FFB800 80%)',
-    border: 'rgba(255,200,0,0.5)',
-    trophy: '🥇',
-    badge: 'WEEKLY CHAMPION',
-    badgeBg: 'rgba(180,100,0,0.15)',
-    badgeColor: '#7A4100',
-  },
-  {
-    bg: 'linear-gradient(135deg, #E8E8E8 0%, #BFBFBF 100%)',
-    border: 'rgba(160,160,160,0.5)',
-    trophy: '🥈',
-    badge: 'Silver Spoon',
-    badgeBg: 'rgba(100,100,100,0.1)',
-    badgeColor: '#555',
-  },
-  {
-    bg: 'linear-gradient(135deg, #EEC88A 0%, #C89050 100%)',
-    border: 'rgba(160,110,50,0.5)',
-    trophy: '🥉',
-    badge: 'Bronze Bite',
-    badgeBg: 'rgba(120,70,20,0.12)',
-    badgeColor: '#6B3A10',
-  },
-];
+type Tab = 'week' | 'month' | 'alltime';
+
+interface UserRow {
+  userId: string;
+  totalPoints: number;
+  currentStreak?: number;
+  username: string;
+  blocksHeld: number;
+  rankChange: number;
+}
+
+const MONSTER_HATS: MonsterHat[] = ['burger', 'donut', 'taco', 'cone', 'sushi', 'ramen'];
+const MONSTER_COLORS = ['#FF4FA3', '#A020C8', '#FF9E5E', '#3DC45A', '#00C8E0', '#FFD600', '#FF3D5A', '#6B44DE'];
+
+function monsterProps(userId: string) {
+  let h = 0;
+  for (let i = 0; i < userId.length; i++) h = (h * 31 + userId.charCodeAt(i)) >>> 0;
+  return {
+    hat: MONSTER_HATS[h % MONSTER_HATS.length]!,
+    color: MONSTER_COLORS[h % MONSTER_COLORS.length]!,
+  };
+}
+
+const TAB_ENDPOINT: Record<Tab, string> = {
+  week:    '/leaderboard/weekly',
+  month:   '/leaderboard/monthly',
+  alltime: '/leaderboard/global',
+};
+
+const TAB_LABELS: Record<Tab, string> = {
+  week: 'Week',
+  month: 'Month',
+  alltime: 'All time',
+};
 
 export function LeaderboardPage() {
-  const [tab, setTab] = useState<'global' | 'weekly'>('global');
+  const { user } = useAuth();
+  const [tab, setTab] = useState<Tab>('week');
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<LeaderboardUser[]>([]);
+  const [rows, setRows] = useState<UserRow[]>([]);
 
   useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
+    let cancelled = false;
+    setLoading(true);
+
+    async function load() {
       try {
-        const endpoint = tab === 'weekly' ? '/leaderboard/weekly' : '/leaderboard/global';
-        const { data: json } = await economyClient.get<{ leaderboard: { userId: string; totalPoints: number; currentStreak?: number }[] }>(endpoint);
-        const rows = json.leaderboard ?? [];
-        const ids = rows.map((r) => r.userId).filter(Boolean);
-        const usernameMap = ids.length > 0
-          ? await profileApi.lookupUsernames(ids).catch(() => ({} as Record<string, string>))
-          : {};
-        setData(rows.map((r) => ({
-          ...r,
-          username: usernameMap[r.userId] ?? `Foodie_${r.userId.slice(0, 5)}`,
-        })));
+        const [{ data: lb }, { data: ownerData }] = await Promise.all([
+          economyClient.get<{ leaderboard: { userId: string; totalPoints: number; currentStreak?: number }[] }>(
+            TAB_ENDPOINT[tab],
+          ),
+          territoryClient.get<{ owners: { userId: string; blocksHeld: number }[] }>('/stats/owners').catch(() => ({ data: { owners: [] } })),
+        ]);
+
+        const entries = lb.leaderboard ?? [];
+        const ids = entries.map((r) => r.userId).filter(Boolean);
+
+        const usersMap: Record<string, { username: string }> = {};
+        if (ids.length > 0) {
+          const { data: lookup } = await authClient.get<{
+            users: { id: string; username: string; clanId: string | null; clanName: string | null }[];
+          }>(`/users/lookup?ids=${ids.join(',')}`).catch(() => ({ data: { users: [] } }));
+          for (const u of lookup.users) {
+            usersMap[u.id] = { username: u.username };
+          }
+        }
+
+        const blocksMap: Record<string, number> = {};
+        for (const o of ownerData.owners) blocksMap[o.userId] = o.blocksHeld;
+
+        if (!cancelled) {
+          setRows(
+            entries.map((r) => ({
+              ...r,
+              username: usersMap[r.userId]?.username ?? `Grub_${r.userId.slice(0, 5)}`,
+              blocksHeld: blocksMap[r.userId] ?? 0,
+              rankChange: 0,
+            })),
+          );
+        }
       } catch {
-        setData([]);
+        if (!cancelled) setRows([]);
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
-    void fetchData();
+
+    void load();
+    return () => { cancelled = true; };
   }, [tab]);
 
-  const top3 = data.slice(0, 3);
-  const rest = data.slice(3);
+  const top3 = rows.slice(0, 3);
+  const rest  = rows.slice(3);
 
   return (
     <div style={{ minHeight: '100vh' }}>
       <Navbar />
-      <div style={{ paddingTop: '40px' }}>
-        <div className="page-card">
-
-          {/* Header */}
-          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-            <div style={{ fontSize: '3.5rem', lineHeight: 1 }}>🧁🏆</div>
-            <h1 style={{
-              margin: '12px 0 4px',
-              fontFamily: 'var(--font-display)',
-              fontSize: '2.2rem',
-              color: '#2D1040',
-              textShadow: '0 2px 0 rgba(255,255,255,0.6)',
-            }}>
-              Hall of Fame: Leaders
+      <div style={{ maxWidth: '860px', margin: '0 auto', padding: '24px 16px 40px' }}>
+        <div style={{
+          background: 'rgba(255,255,255,0.72)',
+          borderRadius: '24px',
+          padding: '28px 24px',
+          border: '2px solid rgba(160,80,180,0.12)',
+          boxShadow: '0 8px 32px rgba(130,68,89,0.10)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            <h1 style={{ margin: 0, fontFamily: "'Fredoka One', 'Nunito', sans-serif", fontSize: '1.8rem', color: '#2D1040' }}>
+              Top Grubs
             </h1>
+            <div style={{ display: 'flex', gap: '6px', background: 'rgba(160,80,180,0.08)', borderRadius: '999px', padding: '4px' }}>
+              {(['week', 'month', 'alltime'] as Tab[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  style={{
+                    padding: '6px 18px',
+                    borderRadius: '999px',
+                    border: 'none',
+                    background: tab === t ? '#A020C8' : 'transparent',
+                    color: tab === t ? '#fff' : '#7A5490',
+                    fontWeight: 700,
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    transition: 'all 120ms ease',
+                  }}
+                >
+                  {TAB_LABELS[t]}
+                </button>
+              ))}
+            </div>
           </div>
-
-          {/* Tabs */}
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '24px' }}>
-            {(['global', 'weekly'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                style={{
-                  padding: '8px 28px',
-                  borderRadius: '999px',
-                  border: '2px solid',
-                  borderColor: tab === t ? 'transparent' : 'rgba(160,32,200,0.3)',
-                  background: tab === t
-                    ? 'linear-gradient(135deg, #4DC87A, #2EA85A)'
-                    : 'rgba(255,255,255,0.5)',
-                  color: tab === t ? '#fff' : '#A020C8',
-                  fontWeight: 800,
-                  fontSize: '0.95rem',
-                  cursor: 'pointer',
-                  textTransform: 'capitalize',
-                  boxShadow: tab === t ? '0 4px 14px rgba(61,196,90,0.35)' : 'none',
-                  transition: 'all 150ms ease',
-                }}
-              >
-                {t === 'global' ? '🌍 Global' : '📅 Weekly'}
-              </button>
-            ))}
-          </div>
-
-          <h2 style={{
-            textAlign: 'center',
-            fontFamily: 'var(--font-display)',
-            fontSize: '1.2rem',
-            color: '#2D1040',
-            margin: '0 0 20px',
-          }}>
-            {tab === 'weekly' ? 'Weekly World Leaders' : 'All-Time Champions'}
-          </h2>
 
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#7A5490' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🍩</div>
-              <p style={{ fontWeight: 700 }}>Loading legends...</p>
+            <div style={{ textAlign: 'center', padding: '60px 0', color: '#7A5490' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>🍩</div>
+              <p style={{ fontWeight: 700, margin: 0 }}>Loading legends…</p>
             </div>
-          ) : data.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#7A5490' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '12px' }}>👻</div>
-              <p style={{ fontWeight: 700 }}>No one here yet. Go claim some turf!</p>
+          ) : rows.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 0', color: '#7A5490' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>👻</div>
+              <p style={{ fontWeight: 700, margin: 0 }}>No grubs ranked yet. Go claim some blocks!</p>
             </div>
           ) : (
             <>
-              {/* Podium top 3 */}
-              {top3.length > 0 && (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: `repeat(${Math.min(top3.length, 3)}, 1fr)`,
-                  gap: '14px',
-                  marginBottom: '20px',
-                }}>
-                  {top3.map((user, i) => {
-                    const p = PODIUM_STYLES[i]!;
-                    const score = tab === 'weekly'
-                      ? `${(user.totalPoints ?? 0).toLocaleString()}`
-                      : `${(user.totalPoints ?? 0).toLocaleString()}`;
-                    return (
-                      <div key={user.userId} style={{
-                        background: p.bg,
-                        border: `2px solid ${p.border}`,
-                        borderRadius: '20px',
-                        padding: '20px 14px',
-                        textAlign: 'center',
-                        boxShadow: '0 6px 20px rgba(0,0,0,0.1)',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
-                      }}>
-                        <div style={{ fontSize: '2.2rem' }}>{p.trophy}</div>
-                        <div style={{
-                          width: '52px', height: '52px', borderRadius: '50%',
-                          background: 'rgba(255,255,255,0.5)',
-                          border: '3px solid rgba(255,255,255,0.8)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '1.8rem',
-                        }}>
-                          👾
-                        </div>
-                        <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#2D1040', lineHeight: 1.2 }}>
-                          {user.username}
-                        </div>
-                        <div style={{
-                          background: 'rgba(255,255,255,0.7)',
-                          borderRadius: '999px',
-                          padding: '4px 14px',
-                          fontWeight: 900,
-                          fontSize: '1rem',
-                          color: '#2D1040',
-                          border: '1.5px solid rgba(255,255,255,0.9)',
-                        }}>
-                          {score}
-                        </div>
-                        {user.currentStreak ? (
-                          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#FF5E00' }}>
-                            🔥 {user.currentStreak}d streak
-                          </div>
-                        ) : null}
-                        <div style={{
-                          background: p.badgeBg,
-                          color: p.badgeColor,
-                          borderRadius: '999px',
-                          padding: '3px 12px',
-                          fontSize: '0.68rem',
-                          fontWeight: 800,
-                          letterSpacing: '0.04em',
-                          textTransform: 'uppercase',
-                          border: `1px solid ${p.border}`,
-                        }}>
-                          {p.badge}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Ranks 4+ in 3-column grid */}
+              <PodiumSection top3={top3} currentUserId={user?.id} />
               {rest.length > 0 && (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                  gap: '10px',
-                }}>
-                  {rest.map((user, i) => (
-                    <div key={user.userId} style={{
-                      background: 'rgba(255,255,255,0.55)',
-                      border: '1.5px solid rgba(255,255,255,0.7)',
-                      borderRadius: '14px',
-                      padding: '12px 14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                    }}>
-                      <div style={{
-                        width: '28px', textAlign: 'center',
-                        fontWeight: 800, fontSize: '0.88rem', color: '#7A5490', flexShrink: 0,
-                      }}>
-                        {i + 4}
-                      </div>
-                      <div style={{
-                        width: '36px', height: '36px', borderRadius: '50%',
-                        background: 'rgba(160,32,200,0.12)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '1.2rem', flexShrink: 0,
-                      }}>
-                        👾
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{
-                          fontWeight: 700, fontSize: '0.85rem', color: '#2D1040',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>
-                          {user.username}
-                        </div>
-                        {user.currentStreak ? (
-                          <div style={{ fontSize: '0.7rem', color: '#FF5E00', fontWeight: 600 }}>
-                            🔥 {user.currentStreak}d
-                          </div>
-                        ) : null}
-                      </div>
-                      <div style={{
-                        background: 'linear-gradient(135deg, #FFE08A, #FFA800)',
-                        borderRadius: '999px',
-                        padding: '3px 10px',
-                        fontWeight: 800,
-                        fontSize: '0.78rem',
-                        color: '#4a3200',
-                        flexShrink: 0,
-                      }}>
-                        {(user.totalPoints ?? 0).toLocaleString()}
-                      </div>
-                    </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {rest.map((row, i) => (
+                    <RankRow key={row.userId} row={row} rank={i + 4} isMe={row.userId === user?.id} />
                   ))}
                 </div>
               )}
@@ -281,57 +167,119 @@ export function LeaderboardPage() {
   );
 }
 
-// Keep TerritoryLeaderboardCard for future territories tab re-addition
-function _TerritoryLeaderboardCard({
-  territory,
-  expanded,
-  history,
-  onExpand,
-}: {
-  territory: Territory;
-  expanded: boolean;
-  history: ClaimHistoryEntry[] | null;
-  onExpand: () => void;
-}) {
+// ── Podium ────────────────────────────────────────────────────────────────────
+
+const PODIUM_ORDER = [1, 0, 2] as const;
+
+const PODIUM_STYLE: Record<number, { bg: string; rankColor: string; rankLabel: string }> = {
+  0: {
+    bg: 'linear-gradient(160deg, #C060F0 0%, #7B20B0 100%)',
+    rankColor: '#FFD600',
+    rankLabel: '#1',
+  },
+  1: {
+    bg: 'linear-gradient(160deg, #FF6FA3 0%, #D03870 100%)',
+    rankColor: '#fff',
+    rankLabel: '#2',
+  },
+  2: {
+    bg: 'linear-gradient(160deg, #FF9E5E 0%, #D06A30 100%)',
+    rankColor: '#fff',
+    rankLabel: '#3',
+  },
+};
+
+function PodiumSection({ top3, currentUserId }: { top3: UserRow[]; currentUserId?: string }) {
+  if (top3.length === 0) return null;
+
+  const orderedIndices = top3.length >= 3 ? PODIUM_ORDER : ([0, 1, 2].slice(0, top3.length) as number[]);
+
   return (
-    <div style={{ border: '1.5px solid rgba(255,255,255,0.6)', borderRadius: '14px', overflow: 'hidden', background: 'rgba(255,255,255,0.4)' }}>
-      <button
-        onClick={onExpand}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '12px',
-          padding: '14px 16px', width: '100%',
-          background: expanded ? 'rgba(255,244,230,0.8)' : 'transparent',
-          border: 'none', cursor: 'pointer', textAlign: 'left',
-        }}
-      >
-        <div style={{ fontSize: '1.4rem' }}>🏴</div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, color: '#2D1040', fontSize: '0.95rem' }}>{territory.name}</div>
-          <div style={{ fontSize: '0.78rem', color: '#7A5490' }}>👑 {territory.ownerName ?? 'Unknown'}</div>
-        </div>
-        <div style={{ color: '#7A5490' }}>{expanded ? '▲' : '▼'}</div>
-      </button>
-      {expanded && history && (
-        <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.3)' }}>
-          {history.map((entry, i) => (
-            <div key={entry.id} style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              padding: '8px 10px', borderRadius: '10px', marginBottom: '6px',
-              background: entry.isWinner ? 'rgba(255,244,230,0.8)' : 'rgba(255,255,255,0.5)',
-            }}>
-              <span style={{ fontWeight: 700, width: '24px', textAlign: 'center' }}>
-                {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
-              </span>
-              <span style={{ flex: 1, fontWeight: 600, fontSize: '0.85rem', color: '#2D1040' }}>
-                {entry.claimantName}
-              </span>
-              <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#FF9E5E' }}>
-                {entry.avgRating != null ? `⭐ ${entry.avgRating.toFixed(1)}` : '—'}
-              </span>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: '12px', marginBottom: '28px', padding: '0 8px' }}>
+      {orderedIndices.map((idx) => {
+        const row = top3[idx];
+        if (!row) return null;
+        const style = PODIUM_STYLE[idx]!;
+        const isFirst = idx === 0;
+        const { hat, color } = monsterProps(row.userId);
+
+        return (
+          <div key={row.userId} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            {/* Monster avatar above card */}
+            <div style={{ marginBottom: '-20px', zIndex: 1 }}>
+              <Monster size={isFirst ? 72 : 60} hat={hat} color={color} />
             </div>
-          ))}
-        </div>
-      )}
+            <div style={{
+              width: '100%',
+              background: style.bg,
+              borderRadius: '20px',
+              padding: isFirst ? '30px 16px 16px' : '26px 12px 14px',
+              textAlign: 'center',
+              boxShadow: isFirst ? '0 8px 28px rgba(120,30,180,0.30)' : '0 6px 20px rgba(0,0,0,0.12)',
+            }}>
+              <div style={{ color: style.rankColor, fontFamily: "'Fredoka One', sans-serif", fontSize: isFirst ? '2rem' : '1.6rem', fontWeight: 900, lineHeight: 1 }}>
+                {style.rankLabel}
+              </div>
+              <div style={{ color: '#fff', fontWeight: 800, fontSize: '0.88rem', marginTop: '6px', lineHeight: 1.2 }}>
+                {row.username}
+                {row.userId === currentUserId && (
+                  <span style={{ marginLeft: '4px', background: '#FFD600', color: '#2D1040', borderRadius: '4px', fontSize: '0.6rem', padding: '1px 5px', verticalAlign: 'middle', fontWeight: 900 }}>YOU</span>
+                )}
+              </div>
+              <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.72rem', marginTop: '2px' }}>
+                {row.totalPoints.toLocaleString()} pts
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
+
+// ── Rank row ──────────────────────────────────────────────────────────────────
+
+function RankRow({ row, rank, isMe }: { row: UserRow; rank: number; isMe: boolean }) {
+  const { hat, color } = monsterProps(row.userId);
+  const change = row.rankChange;
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+      padding: '10px 14px',
+      borderRadius: '14px',
+      background: isMe ? 'rgba(160,32,200,0.08)' : 'transparent',
+      border: isMe ? '1.5px solid rgba(160,32,200,0.18)' : '1.5px solid transparent',
+    }}>
+      <div style={{ width: '22px', textAlign: 'center', fontWeight: 800, fontSize: '0.88rem', color: '#7A5490', flexShrink: 0 }}>
+        {rank}
+      </div>
+      <Monster size={36} hat={hat} color={color} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#2D1040', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {row.username}
+          {isMe && <span style={{ background: '#A020C8', color: '#fff', borderRadius: '4px', fontSize: '0.58rem', padding: '1px 5px', fontWeight: 900 }}>YOU</span>}
+        </div>
+        <div style={{ fontSize: '0.72rem', color: '#9A7AAA', marginTop: '1px' }}>
+          {row.blocksHeld} block{row.blocksHeld !== 1 ? 's' : ''} held
+        </div>
+      </div>
+      <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#2D1040', flexShrink: 0 }}>
+        {row.totalPoints.toLocaleString()}
+      </div>
+      <div style={{
+        width: '28px',
+        textAlign: 'right',
+        fontWeight: 700,
+        fontSize: '0.78rem',
+        color: change > 0 ? '#3DC45A' : change < 0 ? '#FF3D5A' : '#9A7AAA',
+        flexShrink: 0,
+      }}>
+        {change > 0 ? `+${change}` : change < 0 ? `${change}` : '0'}
+      </div>
+    </div>
+  );
+}
+

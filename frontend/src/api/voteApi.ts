@@ -23,6 +23,7 @@ export interface VoteCandidate {
 export interface VoteSession {
   id: string;
   territoryId: string;
+  territoryName: string;
   status: 'pending' | 'active' | 'completed' | 'cancelled';
   createdBy: string;
   createdAt: string;
@@ -76,6 +77,7 @@ export const voteApi = {
 
   async createSession(input: {
     territoryId: string;
+    territoryName?: string;
     photoKey: string;
     challengerId?: string;
     challengerName?: string;
@@ -123,6 +125,15 @@ export const voteApi = {
   async finalizeSession(sessionId: string): Promise<VoteSession | null> {
     const response = await client.post<{ session: VoteSession }>(`/votes/sessions/${sessionId}/finalize`);
     return response.data.session;
+  },
+
+  async getActiveSessions(): Promise<VoteSession[]> {
+    try {
+      const response = await client.get<{ sessions: VoteSession[] }>('/votes/sessions/active');
+      return response.data.sessions;
+    } catch {
+      return [];
+    }
   },
 
   async getPhotoUrl(photoKey: string): Promise<string> {

@@ -7,15 +7,37 @@ export const leaderboardRouter = Router();
 leaderboardRouter.get('/global', async (_req: Request, res: Response) => {
   try {
     const { rows } = await pool.query<{ userId: string; totalPoints: number; currentStreak: number }>(`
-      SELECT user_id as "userId", total_points as "totalPoints", current_streak as "currentStreak"
-      FROM user_stats
-      ORDER BY total_points DESC
+      SELECT l.user_id as "userId",
+             SUM(l.delta)::int as "totalPoints",
+             COALESCE(s.current_streak, 0) as "currentStreak"
+      FROM ledger_entries l
+      LEFT JOIN user_stats s ON s.user_id = l.user_id
+      GROUP BY l.user_id, s.current_streak
+      ORDER BY "totalPoints" DESC
       LIMIT 100
     `);
     res.json({ leaderboard: rows });
   } catch (err) {
     console.error('[economy] global leaderboard error:', err);
     res.status(500).json({ error: 'Failed to fetch global leaderboard' });
+  }
+});
+
+// Monthly Leaderboard
+leaderboardRouter.get('/monthly', async (_req: Request, res: Response) => {
+  try {
+    const { rows } = await pool.query<{ userId: string; totalPoints: number }>(`
+      SELECT user_id as "userId", SUM(delta)::int as "totalPoints"
+      FROM ledger_entries
+      WHERE created_at >= date_trunc('month', NOW())
+      GROUP BY user_id
+      ORDER BY "totalPoints" DESC
+      LIMIT 100
+    `);
+    res.json({ leaderboard: rows });
+  } catch (err) {
+    console.error('[economy] monthly leaderboard error:', err);
+    res.status(500).json({ error: 'Failed to fetch monthly leaderboard' });
   }
 });
 

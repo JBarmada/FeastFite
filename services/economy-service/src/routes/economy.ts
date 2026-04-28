@@ -211,8 +211,9 @@ economyRouter.post('/inventory/use', requireAuth, async (req: Request, res: Resp
     return;
   }
 
-  if (itemId !== 'battering_ram') {
-    res.status(400).json({ error: 'Only the battering ram can be used from this endpoint' });
+  const USABLE_ITEMS = new Set(['battering_ram', 'territory_shield']);
+  if (!USABLE_ITEMS.has(itemId)) {
+    res.status(400).json({ error: 'Item cannot be used from inventory' });
     return;
   }
 

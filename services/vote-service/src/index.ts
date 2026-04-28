@@ -13,11 +13,13 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = process.env['PORT'] ?? 3003;
 const SERVICE_NAME = 'vote-service';
-// Sessions are open-ended — no automatic timer close
-const SESSION_TTL_SECONDS = 365 * 24 * 60 * 60;
+const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60; // keep results in Redis for 7 days
+/** Every food-fite session ends at most this long after it starts (votes no longer accepted after). */
+const VOTING_WINDOW_MS = 10 * 60 * 1000;
 const VOTE_REDIS_PREFIX = 'vote-service';
 const RABBITMQ_EXCHANGE = process.env['RABBITMQ_EXCHANGE'] ?? 'feastfite.events';
 const MINIO_BUCKET_PHOTOS = process.env['MINIO_BUCKET_PHOTOS'] ?? 'fight-photos';
+const TERRITORY_SERVICE_URL = process.env['TERRITORY_SERVICE_URL'] ?? 'http://localhost:3002';
 
 type SessionStatus = 'pending' | 'active' | 'completed' | 'cancelled';
 
@@ -37,6 +39,7 @@ interface ClientVoteCandidate extends VoteCandidate {
 interface VoteSessionRecord {
   id: string;
   territoryId: string;
+  territoryName: string;
   status: SessionStatus;
   createdBy: string;
   createdAt: string;
@@ -61,6 +64,7 @@ interface UploadUrlRequest {
 
 interface CreateSessionRequest {
   territoryId?: string;
+  territoryName?: string;
   photoKey?: string;
   challengerId?: string;
   challengerName?: string;
@@ -183,6 +187,7 @@ app.get('/api/vote/votes/photo-proxy', async (req, res) => {
 app.post('/api/vote/votes/sessions', async (req, res) => {
   const {
     territoryId,
+    territoryName,
     photoKey,
     challengerId,
     challengerName,
@@ -197,7 +202,7 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
 
   const now = Date.now();
   const sessionId = crypto.randomUUID();
-  const farFuture = new Date(now + 365 * 24 * 60 * 60 * 1000).toISOString();
+  const endsAt = new Date(now + VOTING_WINDOW_MS).toISOString();
 
   const candidates: VoteCandidate[] = [
     {
@@ -224,11 +229,12 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
   const session: VoteSessionRecord = {
     id: sessionId,
     territoryId,
+    territoryName: territoryName ?? territoryId,
     status: 'active',
     createdBy: challengerId ?? 'demo-user',
     createdAt: new Date(now).toISOString(),
     startedAt: new Date(now).toISOString(),
-    endsAt: farFuture,
+    endsAt,
     completedAt: null,
     winnerId: null,
     winnerPhotoKey: null,
@@ -240,6 +246,9 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
   await saveSession(session);
   await redis.set(`${VOTE_REDIS_PREFIX}:territory:active:${territoryId}`, sessionId, 'EX', SESSION_TTL_SECONDS);
   void emitSessionUpdate(session);
+
+  // Auto-finalize when the 10-minute window closes
+  setTimeout(() => { void finalizeSession(sessionId); }, VOTING_WINDOW_MS);
 
   return res.status(201).json({
     session: serializeSession(session),
@@ -273,6 +282,36 @@ app.post('/api/vote/votes/sessions/:sessionId/candidates', async (req, res) => {
   return res.status(200).json({ session: serializeSession(session) });
 });
 
+// ── Get all active sessions ───────────────────────────────────────────────────
+
+app.get('/api/vote/votes/sessions/active', async (_req, res) => {
+  const sessionIds = await redis.smembers(getActiveSessionsKey());
+  const sessions = await Promise.all(
+    sessionIds.map(async (id) => finalizeIfExpired(await loadSession(id))),
+  );
+  const active = sessions.filter((s): s is VoteSessionRecord => s !== null && s.status === 'active');
+
+  // Backfill missing territory names and prune orphaned sessions
+  const valid: VoteSessionRecord[] = [];
+  await Promise.all(active.map(async (s) => {
+    if (!s.territoryName || s.territoryName === s.territoryId) {
+      const name = await fetchTerritoryName(s.territoryId);
+      if (name === null) {
+        // Territory no longer exists — remove orphaned session
+        await redis.srem(getActiveSessionsKey(), s.id);
+        await redis.del(`${VOTE_REDIS_PREFIX}:territory:active:${s.territoryId}`);
+        return;
+      }
+      s.territoryName = name;
+      await saveSession(s);
+    }
+    valid.push(s);
+  }));
+
+  const serialized = await Promise.all(valid.map(serializeSession));
+  return res.status(200).json({ sessions: serialized });
+});
+
 // ── Get session by territory ──────────────────────────────────────────────────
 
 app.get('/api/vote/votes/sessions/by-territory/:territoryId', async (req, res) => {
@@ -280,7 +319,8 @@ app.get('/api/vote/votes/sessions/by-territory/:territoryId', async (req, res) =
   const sessionId = await redis.get(`${VOTE_REDIS_PREFIX}:territory:active:${territoryId}`);
   if (!sessionId) return res.status(404).json({ message: 'No active session for this territory.' });
 
-  const session = await loadSession(sessionId);
+  let session = await loadSession(sessionId);
+  session = await finalizeIfExpired(session);
   if (!session || session.status !== 'active') {
     await redis.del(`${VOTE_REDIS_PREFIX}:territory:active:${territoryId}`);
     return res.status(404).json({ message: 'No active session for this territory.' });
@@ -291,7 +331,9 @@ app.get('/api/vote/votes/sessions/by-territory/:territoryId', async (req, res) =
 // ── Get session by id ─────────────────────────────────────────────────────────
 
 app.get('/api/vote/votes/sessions/:sessionId', async (req, res) => {
-  const session = await loadSession(req.params['sessionId']!);
+  let session = await loadSession(req.params['sessionId']!);
+  if (!session) return res.status(404).json({ message: 'Voting session not found.' });
+  session = await finalizeIfExpired(session);
   if (!session) return res.status(404).json({ message: 'Voting session not found.' });
   return res.status(200).json({ session: serializeSession(session) });
 });
@@ -313,6 +355,11 @@ app.post('/api/vote/votes/sessions/:sessionId/vote', async (req, res) => {
   if (!session) return res.status(404).json({ message: 'Voting session not found.' });
   if (session.status !== 'active') return res.status(409).json({ message: 'Voting session is no longer active.' });
 
+  if (new Date(session.endsAt) <= new Date()) {
+    void finalizeSession(session.id);
+    return res.status(409).json({ message: 'Time\'s up — this food fight is over!' });
+  }
+
   const alreadyRated: string[] = session.votesByUser[userId] ?? [];
   if (alreadyRated.includes(candidateId)) {
     return res.status(409).json({ message: 'You already rated this dish.', session: serializeSession(session) });
@@ -320,6 +367,10 @@ app.post('/api/vote/votes/sessions/:sessionId/vote', async (req, res) => {
 
   const candidate = session.candidates.find((entry) => entry.id === candidateId);
   if (!candidate) return res.status(400).json({ message: 'Candidate not found in session.' });
+
+  if (candidate.userId === userId) {
+    return res.status(403).json({ message: 'You cannot rate your own dish.' });
+  }
 
   candidate.votes += 1;
   candidate.totalRating += ratingValue;
@@ -395,9 +446,51 @@ async function bootstrap(): Promise<void> {
       console.warn('[vote-service][amqp] channel unavailable until reconnect');
     },
   });
+  // Re-arm timers for any sessions that survived a service restart
+  await recoverActiveSessions();
+}
+
+/**
+ * On startup, scan all active sessions in Redis.
+ * - Already expired → finalize immediately (declares winner, frees territory).
+ * - Still within window → schedule a setTimeout for the remaining time.
+ */
+async function recoverActiveSessions(): Promise<void> {
+  const sessionIds = await redis.smembers(getActiveSessionsKey());
+  if (sessionIds.length === 0) return;
+
+  console.info(`[${SERVICE_NAME}] recovering ${sessionIds.length} active session(s)…`);
+  const now = Date.now();
+
+  await Promise.all(sessionIds.map(async (id) => {
+    const session = await loadSession(id);
+    if (!session || session.status !== 'active') {
+      await redis.srem(getActiveSessionsKey(), id);
+      return;
+    }
+    const remainingMs = new Date(session.endsAt).getTime() - now;
+    if (remainingMs <= 0) {
+      console.info(`[${SERVICE_NAME}] session ${id} already expired — finalizing`);
+      void finalizeSession(id);
+    } else {
+      console.info(`[${SERVICE_NAME}] session ${id} re-armed — ${Math.ceil(remainingMs / 1000)}s remaining`);
+      setTimeout(() => { void finalizeSession(id); }, remainingMs);
+    }
+  }));
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function fetchTerritoryName(territoryId: string): Promise<string | null> {
+  try {
+    const resp = await fetch(`${TERRITORY_SERVICE_URL}/api/territory/territories/${territoryId}`);
+    if (!resp.ok) return null;
+    const body = await resp.json() as { name?: string };
+    return body.name ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function getRoomName(sessionId: string): string { return `vote-session:${sessionId}`; }
 function getSessionKey(sessionId: string): string { return `${VOTE_REDIS_PREFIX}:session:${sessionId}`; }
@@ -489,9 +582,41 @@ function pickWinner(candidates: VoteCandidate[]): VoteCandidate {
   return tied[Math.floor(Math.random() * tied.length)]!;
 }
 
+function sessionStartMs(s: VoteSessionRecord): number {
+  const t = Date.parse(s.startedAt ?? s.createdAt);
+  return Number.isFinite(t) ? t : NaN;
+}
+
+/** Snap endsAt to startedAt + 10m if stored data was ever too long (e.g. legacy rows). */
+function clampActiveSessionEndsAt(session: VoteSessionRecord): boolean {
+  if (session.status !== 'active') return false;
+  const startMs = sessionStartMs(session);
+  if (!Number.isFinite(startMs)) return false;
+  const maxEndMs = startMs + VOTING_WINDOW_MS;
+  const endMs = Date.parse(session.endsAt);
+  if (!Number.isFinite(endMs) || endMs > maxEndMs || endMs < startMs) {
+    session.endsAt = new Date(maxEndMs).toISOString();
+    return true;
+  }
+  return false;
+}
+
 async function loadSession(sessionId: string): Promise<VoteSessionRecord | null> {
   const raw = await redis.get(getSessionKey(sessionId));
-  return raw ? (JSON.parse(raw) as VoteSessionRecord) : null;
+  if (!raw) return null;
+  const session = JSON.parse(raw) as VoteSessionRecord;
+  if (session.status === 'active' && clampActiveSessionEndsAt(session)) {
+    await saveSession(session);
+  }
+  return session;
+}
+
+/** After load (with clamp), finalize if the 10-minute vote window has passed. */
+async function finalizeIfExpired(session: VoteSessionRecord | null): Promise<VoteSessionRecord | null> {
+  if (!session || session.status !== 'active') return session;
+  if (new Date(session.endsAt).getTime() > Date.now()) return session;
+  await finalizeSession(session.id);
+  return loadSession(session.id);
 }
 
 async function saveSession(session: VoteSessionRecord): Promise<void> {

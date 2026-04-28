@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Navbar } from '../components/layout/Navbar';
 import { useAuth } from '../contexts/AuthContext';
 import { profileApi, type UserStats, type LedgerEntry } from '../api/profileApi';
+import { economyApi } from '../api/economyApi';
 import { territoryApi, type MySubmission } from '../api/territoryApi';
 import { voteApi } from '../api/voteApi';
 import { Lightbox } from '../components/ui/Lightbox';
+import { ItemIcon } from '../components/ui/ItemIcon';
+import type { ItemKind } from '../components/ui/ItemIcon';
 import type { Territory } from '@feastfite/shared';
 import { AUTH_DISABLED, DEV_USER_ID, DEV_FAKE_TOKEN } from '../config/devAuth';
 import { Panel } from '../components/ui/Panel';
@@ -12,6 +16,12 @@ import { Monster } from '../components/ui/Monster';
 import { CandyPattern } from '../components/ui/CandyPattern';
 import { colors, playerColors } from '../styles/colors';
 import type { MonsterHat } from '../components/ui/Monster';
+
+const INVENTORY_META: Record<string, { name: string; kind: ItemKind }> = {
+  territory_shield: { name: 'Territory Shield', kind: 'shield' },
+  battering_ram:    { name: 'Battering Ram',    kind: 'ram'    },
+  double_points:    { name: 'Double Points',    kind: 'boost'  },
+};
 
 const HAT_CYCLE: MonsterHat[] = ['burger', 'donut', 'taco', 'cone', 'sushi', 'ramen'];
 
@@ -52,14 +62,21 @@ export function ProfilePage() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [territories, setTerritories] = useState<Territory[]>([]);
+  const [inventory, setInventory] = useState<{ itemId: string; quantity: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [territoryNames, setTerritoryNames] = useState<Record<string, string>>({});
 
   const [submissions, setSubmissions] = useState<MySubmission[]>([]);
+  const [historyPage, setHistoryPage] = useState(0);
+  const HISTORY_PAGE_SIZE = 5;
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [loadingGallery, setLoadingGallery] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const [selectedHat, setSelectedHat] = useState<MonsterHat>('donut');
+  const hatKey = `grub-hat-${userId || 'default'}`;
+  const [selectedHat, setSelectedHat] = useState<MonsterHat>(() => {
+    const saved = localStorage.getItem(hatKey);
+    return (HAT_CYCLE.includes(saved as MonsterHat) ? saved : 'donut') as MonsterHat;
+  });
 
   const displayName = AUTH_DISABLED ? 'Monster Grubby' : (user?.username ?? 'Food Monster');
   const monsterColor = playerColors[hashToIndex(userId || 'default')].solid;
@@ -72,12 +89,14 @@ export function ProfilePage() {
       profileApi.getUserStats(authToken).catch(() => null),
       profileApi.getLedger(authToken, 25).catch(() => []),
       territoryApi.getOwned(authToken).catch(() => []),
+      economyApi.getInventory(authToken).catch(() => ({ items: [] })),
     ])
-      .then(([s, l, t]) => {
+      .then(([s, l, t, inv]) => {
         setStats(s);
         const ledgerEntries = Array.isArray(l) ? l : [];
         setLedger(ledgerEntries);
         setTerritories(Array.isArray(t) ? t : []);
+        setInventory((inv as { items: { itemId: string; quantity: number }[] }).items ?? []);
         const tIds = [...new Set(ledgerEntries.map((e) => e.territoryId).filter(Boolean) as string[])];
         Promise.all(tIds.map((id) => territoryApi.getById(id).catch(() => null)))
           .then((terrs) => {
@@ -177,7 +196,7 @@ export function ProfilePage() {
                   {HAT_CYCLE.map((h) => (
                     <button
                       key={h}
-                      onClick={() => setSelectedHat(h)}
+                      onClick={() => { setSelectedHat(h); localStorage.setItem(hatKey, h); }}
                       style={{
                         width: 44, height: 44, borderRadius: 10, cursor: 'pointer', padding: 0, border: 'none',
                         background: h === selectedHat ? colors.primaryLight : colors.surfaceRaised,
@@ -197,6 +216,33 @@ export function ProfilePage() {
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.points }}>
                   {loading ? '…' : (stats?.balance ?? 0).toLocaleString()}
                 </div>
+              </div>
+
+              {/* Inventory card */}
+              <div style={{ marginTop: 10, padding: '12px 14px', background: 'white', borderRadius: 12, border: `2px solid ${colors.border}` }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary, letterSpacing: '0.06em', marginBottom: 10 }}>ITEMS</div>
+                {loading ? (
+                  <div style={{ color: colors.textSecondary, fontSize: 12, textAlign: 'center', padding: '4px 0' }}>…</div>
+                ) : inventory.filter((i) => i.quantity > 0).length === 0 ? (
+                  <div style={{ color: colors.textSecondary, fontSize: 12, textAlign: 'center', padding: '4px 0' }}>No items yet — visit the shop!</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {inventory.filter((i) => i.quantity > 0).map((item) => {
+                      const meta = INVENTORY_META[item.itemId];
+                      return (
+                        <div key={item.itemId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {meta && <ItemIcon kind={meta.kind} size={22} />}
+                            <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: colors.textPrimary }}>
+                              {meta?.name ?? item.itemId}
+                            </span>
+                          </div>
+                          <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: colors.primary }}>×{item.quantity}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </Panel>
 
@@ -259,81 +305,109 @@ export function ProfilePage() {
                 </Panel>
               </div>
 
-              {/* Photo gallery */}
-              <Panel color={colors.primary} pad={16}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.textPrimary, marginBottom: 12 }}>
-                  {displayName}&apos;s Best Dishes
-                </div>
-                {loadingGallery ? (
-                  <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '20px 0', fontSize: 13 }}>Loading gallery…</div>
-                ) : submissions.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '24px 0', color: colors.textSecondary }}>
-                    <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>📭</div>
-                    <div style={{ fontSize: 13 }}>No photos yet — go eat somewhere and claim a territory!</div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-                    {submissions.map((entry) => {
-                      const photoUrl = entry.photoKey ? (photoUrls[entry.photoKey] ?? null) : null;
-                      return (
-                        <div
-                          key={entry.id}
-                          onClick={() => photoUrl && setLightboxSrc(photoUrl)}
-                          style={{
-                            borderRadius: 14, overflow: 'hidden', cursor: photoUrl ? 'zoom-in' : 'default',
-                            border: `2px solid ${entry.isWinner ? colors.warning : colors.border}`,
-                            background: entry.isWinner ? '#FFF8E8' : 'white',
-                          }}
-                        >
-                          <div style={{ aspectRatio: '1', background: colors.surfaceRaised, overflow: 'hidden' }}>
-                            {photoUrl ? (
-                              <img src={photoUrl} alt="Submission" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                            ) : (
-                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>🍽️</div>
-                            )}
-                          </div>
-                          <div style={{ padding: '6px 8px' }}>
-                            <div style={{ fontFamily: 'var(--font-display)', fontSize: 11, color: colors.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {entry.territoryName}
-                            </div>
-                            {entry.isWinner && (
-                              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: colors.warning, marginTop: 2 }}>👑 WINNER</div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </Panel>
+              {/* Photo gallery + Points history — side by side */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
 
-              {/* Points history */}
-              <Panel color={colors.border} pad={16} style={{ background: 'white' }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.textPrimary, marginBottom: 10 }}>Points History</div>
-                {loading ? (
-                  <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '16px 0', fontSize: 13 }}>Loading…</div>
-                ) : ledger.length === 0 ? (
-                  <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '16px 0', fontSize: 13 }}>No activity yet — go claim a territory!</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {ledger.map((entry, i) => (
-                      <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i > 0 ? `1px solid ${colors.border}` : 'none' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, color: colors.textPrimary }}>
-                            {reasonLabel(entry.reason, entry.territoryId ? territoryNames[entry.territoryId] : undefined)}
-                          </div>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary }}>
-                            {new Date(entry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                          </div>
-                        </div>
-                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: entry.delta > 0 ? colors.success : colors.error, flexShrink: 0 }}>
-                          {entry.delta > 0 ? '+' : ''}{entry.delta} pts
-                        </div>
-                      </div>
-                    ))}
+                {/* Photo gallery */}
+                <Panel color={colors.primary} pad={16}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.textPrimary, marginBottom: 12 }}>
+                    {displayName}&apos;s Best Dishes
                   </div>
-                )}
-              </Panel>
+                  {loadingGallery ? (
+                    <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '20px 0', fontSize: 13 }}>Loading gallery…</div>
+                  ) : submissions.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '24px 0', color: colors.textSecondary }}>
+                      <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>📭</div>
+                      <div style={{ fontSize: 13 }}>No photos yet — go eat somewhere and claim a territory!</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                      {submissions.map((entry) => {
+                        const photoUrl = entry.photoKey ? (photoUrls[entry.photoKey] ?? null) : null;
+                        return (
+                          <div
+                            key={entry.id}
+                            onClick={() => photoUrl && setLightboxSrc(photoUrl)}
+                            style={{
+                              borderRadius: 14, overflow: 'hidden', cursor: photoUrl ? 'zoom-in' : 'default',
+                              border: `2px solid ${entry.isWinner ? colors.warning : colors.border}`,
+                              background: entry.isWinner ? '#FFF8E8' : 'white',
+                            }}
+                          >
+                            <div style={{ aspectRatio: '1', background: colors.surfaceRaised, overflow: 'hidden' }}>
+                              {photoUrl ? (
+                                <img src={photoUrl} alt="Submission" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              ) : (
+                                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>🍽️</div>
+                              )}
+                            </div>
+                            <div style={{ padding: '6px 8px' }}>
+                              <div style={{ fontFamily: 'var(--font-display)', fontSize: 11, color: colors.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {entry.territoryName}
+                              </div>
+                              {entry.isWinner && (
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: colors.warning, marginTop: 2 }}>👑 WINNER</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Panel>
+
+                {/* Points history */}
+                <Panel color={colors.border} pad={16} style={{ background: 'white' }}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.textPrimary, marginBottom: 10 }}>Points History</div>
+                  {loading ? (
+                    <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '16px 0', fontSize: 13 }}>Loading…</div>
+                  ) : ledger.length === 0 ? (
+                    <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '16px 0', fontSize: 13 }}>No activity yet — go claim a territory!</div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {ledger.slice(historyPage * HISTORY_PAGE_SIZE, (historyPage + 1) * HISTORY_PAGE_SIZE).map((entry, i) => (
+                          <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i > 0 ? `1px solid ${colors.border}` : 'none' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, color: colors.textPrimary }}>
+                                {reasonLabel(entry.reason, entry.territoryId ? territoryNames[entry.territoryId] : undefined)}
+                              </div>
+                              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary }}>
+                                {new Date(entry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              </div>
+                            </div>
+                            <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: entry.delta > 0 ? colors.success : colors.error, flexShrink: 0 }}>
+                              {entry.delta > 0 ? '+' : ''}{entry.delta} pts
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {ledger.length > HISTORY_PAGE_SIZE && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 12 }}>
+                          <button
+                            onClick={() => setHistoryPage(p => p - 1)}
+                            disabled={historyPage === 0}
+                            style={{ background: 'none', border: 'none', cursor: historyPage === 0 ? 'default' : 'pointer', fontSize: 18, color: historyPage === 0 ? colors.border : colors.textPrimary, padding: '2px 8px' }}
+                          >
+                            ‹
+                          </button>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: colors.textSecondary }}>
+                            {historyPage + 1} / {Math.ceil(ledger.length / HISTORY_PAGE_SIZE)}
+                          </span>
+                          <button
+                            onClick={() => setHistoryPage(p => p + 1)}
+                            disabled={(historyPage + 1) * HISTORY_PAGE_SIZE >= ledger.length}
+                            style={{ background: 'none', border: 'none', cursor: (historyPage + 1) * HISTORY_PAGE_SIZE >= ledger.length ? 'default' : 'pointer', fontSize: 18, color: (historyPage + 1) * HISTORY_PAGE_SIZE >= ledger.length ? colors.border : colors.textPrimary, padding: '2px 8px' }}
+                          >
+                            ›
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </Panel>
+
+              </div>
             </div>
           </div>
         </div>

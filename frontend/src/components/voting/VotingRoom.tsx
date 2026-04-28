@@ -14,16 +14,24 @@ interface VotingRoomProps {
 
 let socket: Socket | null = null;
 
+/** Formats remaining time (vote-service enforces a 10-minute window per session). */
+function formatVoteWindowRemaining(ms: number): string {
+  if (ms <= 0) return 'Time\'s up!';
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+  return `${m}m ${String(s).padStart(2, '0')}s`;
+}
+
 function useCountdown(endsAt: string | undefined) {
   const [label, setLabel] = useState('');
   useEffect(() => {
     if (!endsAt) return;
     const tick = () => {
       const ms = new Date(endsAt).getTime() - Date.now();
-      if (ms <= 0) { setLabel('Time\'s up!'); return; }
-      const m = Math.floor(ms / 60000);
-      const s = Math.floor((ms % 60000) / 1000);
-      setLabel(`${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')} remaining!`);
+      setLabel(`${formatVoteWindowRemaining(ms)} remaining!`);
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -39,8 +47,6 @@ export function VotingRoom({ sessionId, currentUserId, territoryName, onBack, on
   const [ratingCardId, setRatingCardId] = useState<string | null>(null);
   const [hoverRating, setHoverRating] = useState<{ candidateId: string; star: number } | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const [finalizing, setFinalizing] = useState(false);
-
   const countdown = useCountdown(session?.endsAt);
 
   useEffect(() => {
@@ -76,6 +82,12 @@ export function VotingRoom({ sessionId, currentUserId, territoryName, onBack, on
   }, 0) ?? 0;
 
   async function handleRate(candidateId: string, rating: number) {
+    const cand = session?.candidates.find((c) => c.id === candidateId);
+    if (cand?.userId === currentUserId) {
+      setError('You can’t rate your own dish.');
+      setRatingCardId(null);
+      return;
+    }
     setVotingFor(candidateId);
     setError(null);
     try {
@@ -85,23 +97,9 @@ export function VotingRoom({ sessionId, currentUserId, territoryName, onBack, on
       if (nextSession.status === 'completed') onCompleted?.(nextSession);
     } catch (e) {
       console.error(e);
-      setError("Your rating didn't stick. Another hungry monster may have clicked first.");
+      setError("Rating fizzled out — try again!");
     } finally {
       setVotingFor(null);
-    }
-  }
-
-  async function handleFinalize() {
-    setFinalizing(true);
-    setError(null);
-    try {
-      const updated = await voteApi.finalizeSession(sessionId);
-      if (updated) { setSession(updated); onCompleted?.(updated); }
-    } catch (e) {
-      console.error(e);
-      setError('Could not declare winner right now.');
-    } finally {
-      setFinalizing(false);
     }
   }
 
@@ -180,9 +178,6 @@ export function VotingRoom({ sessionId, currentUserId, territoryName, onBack, on
 
         {error && <p className="error-text" style={{ textAlign: 'center' }}>{error}</p>}
 
-        {/* Divider */}
-        <div style={{ textAlign: 'center', color: '#BBA0CC', fontSize: '1.5rem', marginBottom: '4px' }}>/</div>
-
         {/* Candidates */}
         <div className="candidate-grid">
           {session.candidates.map((candidate) => {
@@ -236,9 +231,24 @@ export function VotingRoom({ sessionId, currentUserId, territoryName, onBack, on
 
                   {/* Action area */}
                   {isOwnDish ? (
-                    <p style={{ fontSize: '0.78rem', color: '#7A5490', fontWeight: 600, margin: '8px 0 0' }}>
-                      Others are rating your dish!
-                    </p>
+                    <div
+                      aria-label="You cannot vote for your own dish"
+                      style={{
+                        marginTop: '10px',
+                        padding: '10px 8px',
+                        borderRadius: '12px',
+                        border: '2px dashed rgba(160,80,120,0.35)',
+                        background: 'rgba(245,230,240,0.65)',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <p style={{ fontSize: '0.72rem', fontWeight: 800, color: '#994466', margin: '0 0 4px', letterSpacing: '0.04em' }}>
+                        YOUR DISH
+                      </p>
+                      <p style={{ fontSize: '0.74rem', color: '#7A5490', fontWeight: 600, margin: 0, lineHeight: 1.35 }}>
+                        You can’t vote for yourself — pick another grub’s plate to rate.
+                      </p>
+                    </div>
                   ) : alreadyRated ? (
                     <p style={{ fontSize: '0.78rem', color: '#A020C8', fontWeight: 700, margin: '8px 0 0' }}>
                       You rated: {'⭐'.repeat(Math.min(myRating ?? 0, 5))} ({myRating}/10)
@@ -296,27 +306,12 @@ export function VotingRoom({ sessionId, currentUserId, territoryName, onBack, on
           })}
         </div>
 
-        {/* Declare winner */}
+        {/* Vote count */}
         {totalVotes > 0 && (
           <div style={{ textAlign: 'center', marginTop: '20px', paddingTop: '16px', borderTop: '1.5px solid rgba(255,255,255,0.4)' }}>
-            <p style={{ color: '#7A5490', fontSize: '0.8rem', margin: '0 0 10px' }}>
+            <p style={{ color: '#7A5490', fontSize: '0.8rem', margin: 0 }}>
               {totalVotes} {totalVotes === 1 ? 'vote' : 'votes'} cast
             </p>
-            <button
-              type="button"
-              onClick={() => void handleFinalize()}
-              disabled={finalizing}
-              style={{
-                background: 'linear-gradient(135deg, #FFD700, #FFA500)',
-                color: '#3B1F00', border: 'none',
-                borderRadius: '999px', padding: '10px 28px',
-                fontWeight: 900, cursor: finalizing ? 'not-allowed' : 'pointer',
-                fontSize: '0.9rem', opacity: finalizing ? 0.6 : 1,
-                boxShadow: '0 4px 14px rgba(255,180,0,0.35)',
-              }}
-            >
-              {finalizing ? 'Declaring...' : '🏆 Declare Winner Now'}
-            </button>
           </div>
         )}
       </section>
