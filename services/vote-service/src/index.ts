@@ -120,7 +120,7 @@ app.get('/health', (_req, res) => {
 
 app.post(
   '/api/vote/votes/upload',
-  express.raw({ type: ['image/*', 'application/octet-stream'], limit: '20mb' }),
+  express.raw({ type: () => true, limit: '20mb' }),
   async (req, res) => {
     const rawContentType = req.headers['content-type'] ?? 'image/jpeg';
     const mimeType = rawContentType.split(';')[0]?.trim() ?? 'image/jpeg';

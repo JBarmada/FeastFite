@@ -36,14 +36,42 @@ export interface VoteSession {
   ratingByUser: Record<string, Record<string, number>>;
 }
 
+function compressToJpeg(file: File, maxPx = 1920, quality = 0.82): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const blobUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(blobUrl);
+      const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error('Compression failed'))),
+        'image/jpeg',
+        quality,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error('Image load failed')); };
+    img.src = blobUrl;
+  });
+}
+
 export const voteApi = {
   client,
 
   async uploadFile(file: File): Promise<UploadResponse> {
-    const response = await client.post<UploadResponse>('/votes/upload', file, {
-      headers: { 'Content-Type': file.type || 'image/jpeg' },
+    const compressed = await compressToJpeg(file);
+    const resp = await fetch('/api/vote/votes/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: compressed,
     });
-    return response.data;
+    if (!resp.ok) throw new Error(`Upload failed: ${resp.status}`);
+    return resp.json() as Promise<UploadResponse>;
   },
 
   async createSession(input: {
