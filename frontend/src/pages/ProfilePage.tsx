@@ -301,104 +301,109 @@ export function ProfilePage() {
                 </Panel>
               </div>
 
-              {/* Photo gallery */}
-              <Panel color={colors.primary} pad={16}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.textPrimary, marginBottom: 12 }}>
-                  {displayName}&apos;s Best Dishes
-                </div>
-                {loadingGallery ? (
-                  <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '20px 0', fontSize: 13 }}>Loading gallery…</div>
-                ) : submissions.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '24px 0', color: colors.textSecondary }}>
-                    <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>📭</div>
-                    <div style={{ fontSize: 13 }}>No photos yet — go eat somewhere and claim a territory!</div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-                    {submissions.map((entry) => {
-                      const photoUrl = entry.photoKey ? (photoUrls[entry.photoKey] ?? null) : null;
-                      return (
-                        <div
-                          key={entry.id}
-                          onClick={() => photoUrl && setLightboxSrc(photoUrl)}
-                          style={{
-                            borderRadius: 14, overflow: 'hidden', cursor: photoUrl ? 'zoom-in' : 'default',
-                            border: `2px solid ${entry.isWinner ? colors.warning : colors.border}`,
-                            background: entry.isWinner ? '#FFF8E8' : 'white',
-                          }}
-                        >
-                          <div style={{ aspectRatio: '1', background: colors.surfaceRaised, overflow: 'hidden' }}>
-                            {photoUrl ? (
-                              <img src={photoUrl} alt="Submission" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                            ) : (
-                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>🍽️</div>
-                            )}
-                          </div>
-                          <div style={{ padding: '6px 8px' }}>
-                            <div style={{ fontFamily: 'var(--font-display)', fontSize: 11, color: colors.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {entry.territoryName}
-                            </div>
-                            {entry.isWinner && (
-                              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: colors.warning, marginTop: 2 }}>👑 WINNER</div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </Panel>
+              {/* Photo gallery + Points history — side by side */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
 
-              {/* Points history */}
-              <Panel color={colors.border} pad={16} style={{ background: 'white' }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.textPrimary, marginBottom: 10 }}>Points History</div>
-                {loading ? (
-                  <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '16px 0', fontSize: 13 }}>Loading…</div>
-                ) : ledger.length === 0 ? (
-                  <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '16px 0', fontSize: 13 }}>No activity yet — go claim a territory!</div>
-                ) : (
-                  <>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {ledger.slice(historyPage * HISTORY_PAGE_SIZE, (historyPage + 1) * HISTORY_PAGE_SIZE).map((entry, i) => (
-                        <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i > 0 ? `1px solid ${colors.border}` : 'none' }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, color: colors.textPrimary }}>
-                              {reasonLabel(entry.reason, entry.territoryId ? territoryNames[entry.territoryId] : undefined)}
-                            </div>
-                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary }}>
-                              {new Date(entry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                            </div>
-                          </div>
-                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: entry.delta > 0 ? colors.success : colors.error, flexShrink: 0 }}>
-                            {entry.delta > 0 ? '+' : ''}{entry.delta} pts
-                          </div>
-                        </div>
-                      ))}
+                {/* Photo gallery */}
+                <Panel color={colors.primary} pad={16}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.textPrimary, marginBottom: 12 }}>
+                    {displayName}&apos;s Best Dishes
+                  </div>
+                  {loadingGallery ? (
+                    <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '20px 0', fontSize: 13 }}>Loading gallery…</div>
+                  ) : submissions.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '24px 0', color: colors.textSecondary }}>
+                      <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>📭</div>
+                      <div style={{ fontSize: 13 }}>No photos yet — go eat somewhere and claim a territory!</div>
                     </div>
-                    {ledger.length > HISTORY_PAGE_SIZE && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 12 }}>
-                        <button
-                          onClick={() => setHistoryPage(p => p - 1)}
-                          disabled={historyPage === 0}
-                          style={{ background: 'none', border: 'none', cursor: historyPage === 0 ? 'default' : 'pointer', fontSize: 18, color: historyPage === 0 ? colors.border : colors.textPrimary, padding: '2px 8px' }}
-                        >
-                          ‹
-                        </button>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: colors.textSecondary }}>
-                          {historyPage + 1} / {Math.ceil(ledger.length / HISTORY_PAGE_SIZE)}
-                        </span>
-                        <button
-                          onClick={() => setHistoryPage(p => p + 1)}
-                          disabled={(historyPage + 1) * HISTORY_PAGE_SIZE >= ledger.length}
-                          style={{ background: 'none', border: 'none', cursor: (historyPage + 1) * HISTORY_PAGE_SIZE >= ledger.length ? 'default' : 'pointer', fontSize: 18, color: (historyPage + 1) * HISTORY_PAGE_SIZE >= ledger.length ? colors.border : colors.textPrimary, padding: '2px 8px' }}
-                        >
-                          ›
-                        </button>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                      {submissions.map((entry) => {
+                        const photoUrl = entry.photoKey ? (photoUrls[entry.photoKey] ?? null) : null;
+                        return (
+                          <div
+                            key={entry.id}
+                            onClick={() => photoUrl && setLightboxSrc(photoUrl)}
+                            style={{
+                              borderRadius: 14, overflow: 'hidden', cursor: photoUrl ? 'zoom-in' : 'default',
+                              border: `2px solid ${entry.isWinner ? colors.warning : colors.border}`,
+                              background: entry.isWinner ? '#FFF8E8' : 'white',
+                            }}
+                          >
+                            <div style={{ aspectRatio: '1', background: colors.surfaceRaised, overflow: 'hidden' }}>
+                              {photoUrl ? (
+                                <img src={photoUrl} alt="Submission" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              ) : (
+                                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>🍽️</div>
+                              )}
+                            </div>
+                            <div style={{ padding: '6px 8px' }}>
+                              <div style={{ fontFamily: 'var(--font-display)', fontSize: 11, color: colors.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {entry.territoryName}
+                              </div>
+                              {entry.isWinner && (
+                                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: colors.warning, marginTop: 2 }}>👑 WINNER</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Panel>
+
+                {/* Points history */}
+                <Panel color={colors.border} pad={16} style={{ background: 'white' }}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: colors.textPrimary, marginBottom: 10 }}>Points History</div>
+                  {loading ? (
+                    <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '16px 0', fontSize: 13 }}>Loading…</div>
+                  ) : ledger.length === 0 ? (
+                    <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '16px 0', fontSize: 13 }}>No activity yet — go claim a territory!</div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {ledger.slice(historyPage * HISTORY_PAGE_SIZE, (historyPage + 1) * HISTORY_PAGE_SIZE).map((entry, i) => (
+                          <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i > 0 ? `1px solid ${colors.border}` : 'none' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, color: colors.textPrimary }}>
+                                {reasonLabel(entry.reason, entry.territoryId ? territoryNames[entry.territoryId] : undefined)}
+                              </div>
+                              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary }}>
+                                {new Date(entry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              </div>
+                            </div>
+                            <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: entry.delta > 0 ? colors.success : colors.error, flexShrink: 0 }}>
+                              {entry.delta > 0 ? '+' : ''}{entry.delta} pts
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    )}
-                  </>
-                )}
-              </Panel>
+                      {ledger.length > HISTORY_PAGE_SIZE && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 12 }}>
+                          <button
+                            onClick={() => setHistoryPage(p => p - 1)}
+                            disabled={historyPage === 0}
+                            style={{ background: 'none', border: 'none', cursor: historyPage === 0 ? 'default' : 'pointer', fontSize: 18, color: historyPage === 0 ? colors.border : colors.textPrimary, padding: '2px 8px' }}
+                          >
+                            ‹
+                          </button>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: colors.textSecondary }}>
+                            {historyPage + 1} / {Math.ceil(ledger.length / HISTORY_PAGE_SIZE)}
+                          </span>
+                          <button
+                            onClick={() => setHistoryPage(p => p + 1)}
+                            disabled={(historyPage + 1) * HISTORY_PAGE_SIZE >= ledger.length}
+                            style={{ background: 'none', border: 'none', cursor: (historyPage + 1) * HISTORY_PAGE_SIZE >= ledger.length ? 'default' : 'pointer', fontSize: 18, color: (historyPage + 1) * HISTORY_PAGE_SIZE >= ledger.length ? colors.border : colors.textPrimary, padding: '2px 8px' }}
+                          >
+                            ›
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </Panel>
+
+              </div>
             </div>
           </div>
         </div>

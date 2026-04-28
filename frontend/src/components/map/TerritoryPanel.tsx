@@ -57,9 +57,10 @@ interface Props {
   onClaim: (territory: Territory, intent: 'claim' | 'vote' | 'battering-ram' | 'shield') => void;
   ownerName?: string;
   ownerAvatarUrl?: string;
+  isVoting?: boolean;
 }
 
-export function TerritoryPanel({ territory, onClose, onClaim, ownerName }: Props) {
+export function TerritoryPanel({ territory, onClose, onClaim, ownerName, isVoting = false }: Props) {
   const { user, token } = useAuth();
   const currentUserId = AUTH_DISABLED ? DEV_USER_ID : (user?.id ?? null);
 
@@ -110,7 +111,6 @@ export function TerritoryPanel({ territory, onClose, onClaim, ownerName }: Props
   const dishPhotoUrl = territory.dishPhotoKey ? `/api/files/${territory.dishPhotoKey}` : null;
   const displayOwnerName = ownerName ?? territory.ownerName ?? (territory.ownerId ? 'Unknown Foodie' : null);
   const isLocked = !!territory.lockedUntil && new Date(territory.lockedUntil) > new Date();
-  const isVoting = !territory.ownerId && isLocked;
   const isOwnTerritory = !!currentUserId && territory.ownerId === currentUserId;
   const battRamCount = inventory['battering_ram'] ?? 0;
   const shieldCount = inventory['territory_shield'] ?? 0;
