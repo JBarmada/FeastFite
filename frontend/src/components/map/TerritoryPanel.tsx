@@ -86,13 +86,18 @@ export function TerritoryPanel({ territory, onClose, onClaim, ownerName }: Props
   useEffect(() => {
     const authToken = AUTH_DISABLED ? 'dev-bypass-token' : token;
     if (!authToken) { setInventory({}); return; }
-    economyApi.getInventory(authToken)
-      .then(({ items }) => {
-        const map: Record<string, number> = {};
-        for (const row of items) map[row.itemId] = row.quantity;
-        setInventory(map);
-      })
-      .catch(() => setInventory({}));
+    const fetchInventory = () => {
+      economyApi.getInventory(authToken)
+        .then(({ items }) => {
+          const map: Record<string, number> = {};
+          for (const row of items) map[row.itemId] = row.quantity;
+          setInventory(map);
+        })
+        .catch(() => setInventory({}));
+    };
+    fetchInventory();
+    window.addEventListener('feastfite:balance', fetchInventory);
+    return () => window.removeEventListener('feastfite:balance', fetchInventory);
   }, [territory?.id, token]);
 
   if (!territory) return null;

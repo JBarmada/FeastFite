@@ -2,7 +2,7 @@
 .leaflet-interactive:focus { outline: none; }
 
 :root {
-  font-family: 'Nunito', 'Fredoka One', system-ui, sans-serif;
+  font-family: 'Nunito', system-ui, sans-serif;
   color: #3a2245;
   line-height: 1.5;
   font-weight: 500;

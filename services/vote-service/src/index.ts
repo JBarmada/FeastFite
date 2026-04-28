@@ -13,11 +13,11 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = process.env['PORT'] ?? 3003;
 const SERVICE_NAME = 'vote-service';
-// Sessions are open-ended — no automatic timer close
-const SESSION_TTL_SECONDS = 365 * 24 * 60 * 60;
+const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 const VOTE_REDIS_PREFIX = 'vote-service';
 const RABBITMQ_EXCHANGE = process.env['RABBITMQ_EXCHANGE'] ?? 'feastfite.events';
 const MINIO_BUCKET_PHOTOS = process.env['MINIO_BUCKET_PHOTOS'] ?? 'fight-photos';
+const TERRITORY_SERVICE_URL = process.env['TERRITORY_SERVICE_URL'] ?? 'http://localhost:3002';
 
 type SessionStatus = 'pending' | 'active' | 'completed' | 'cancelled';
 
@@ -37,6 +37,7 @@ interface ClientVoteCandidate extends VoteCandidate {
 interface VoteSessionRecord {
   id: string;
   territoryId: string;
+  territoryName: string;
   status: SessionStatus;
   createdBy: string;
   createdAt: string;
@@ -61,6 +62,7 @@ interface UploadUrlRequest {
 
 interface CreateSessionRequest {
   territoryId?: string;
+  territoryName?: string;
   photoKey?: string;
   challengerId?: string;
   challengerName?: string;
@@ -162,6 +164,7 @@ app.get('/api/vote/votes/photo-url', async (req, res) => {
 app.post('/api/vote/votes/sessions', async (req, res) => {
   const {
     territoryId,
+    territoryName,
     photoKey,
     challengerId,
     challengerName,
@@ -176,7 +179,7 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
 
   const now = Date.now();
   const sessionId = crypto.randomUUID();
-  const farFuture = new Date(now + 365 * 24 * 60 * 60 * 1000).toISOString();
+  const farFuture = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const candidates: VoteCandidate[] = [
     {
@@ -203,6 +206,7 @@ app.post('/api/vote/votes/sessions', async (req, res) => {
   const session: VoteSessionRecord = {
     id: sessionId,
     territoryId,
+    territoryName: territoryName ?? territoryId,
     status: 'active',
     createdBy: challengerId ?? 'demo-user',
     createdAt: new Date(now).toISOString(),
@@ -258,7 +262,25 @@ app.get('/api/vote/votes/sessions/active', async (_req, res) => {
   const sessionIds = await redis.smembers(getActiveSessionsKey());
   const sessions = await Promise.all(sessionIds.map(loadSession));
   const active = sessions.filter((s): s is VoteSessionRecord => s !== null && s.status === 'active');
-  const serialized = await Promise.all(active.map(serializeSession));
+
+  // Backfill missing territory names and prune orphaned sessions
+  const valid: VoteSessionRecord[] = [];
+  await Promise.all(active.map(async (s) => {
+    if (!s.territoryName || s.territoryName === s.territoryId) {
+      const name = await fetchTerritoryName(s.territoryId);
+      if (name === null) {
+        // Territory no longer exists — remove orphaned session
+        await redis.srem(getActiveSessionsKey(), s.id);
+        await redis.del(`${VOTE_REDIS_PREFIX}:territory:active:${s.territoryId}`);
+        return;
+      }
+      s.territoryName = name;
+      await saveSession(s);
+    }
+    valid.push(s);
+  }));
+
+  const serialized = await Promise.all(valid.map(serializeSession));
   return res.status(200).json({ sessions: serialized });
 });
 
@@ -303,8 +325,8 @@ app.post('/api/vote/votes/sessions/:sessionId/vote', async (req, res) => {
   if (session.status !== 'active') return res.status(409).json({ message: 'Voting session is no longer active.' });
 
   const alreadyRated: string[] = session.votesByUser[userId] ?? [];
-  if (alreadyRated.includes(candidateId)) {
-    return res.status(409).json({ message: 'You already rated this dish.', session: await serializeSession(session) });
+  if (alreadyRated.length > 0) {
+    return res.status(409).json({ message: 'You already voted in this fite.', session: await serializeSession(session) });
   }
 
   const candidate = session.candidates.find((entry) => entry.id === candidateId);
@@ -387,6 +409,17 @@ async function bootstrap(): Promise<void> {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function fetchTerritoryName(territoryId: string): Promise<string | null> {
+  try {
+    const resp = await fetch(`${TERRITORY_SERVICE_URL}/api/territory/territories/${territoryId}`);
+    if (!resp.ok) return null;
+    const body = await resp.json() as { name?: string };
+    return body.name ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function getRoomName(sessionId: string): string { return `vote-session:${sessionId}`; }
 function getSessionKey(sessionId: string): string { return `${VOTE_REDIS_PREFIX}:session:${sessionId}`; }

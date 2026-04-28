@@ -92,8 +92,8 @@
   --color-item-boost:   #3DC45A;   /* green double-points boost                  */
 
   /* ── Typography ──────────────────────────────────────────────── */
-  --font-sans:    'Nunito', 'Rounded Mplus 1c', system-ui, sans-serif;
-  --font-display: 'Fredoka One', 'Nunito', sans-serif;
+  --font-sans:    'Nunito', system-ui, sans-serif;
+  --font-display: 'Lilita One', 'Nunito', sans-serif;
   --font-mono:    'JetBrains Mono', monospace;
 
   --text-xs:   0.75rem;

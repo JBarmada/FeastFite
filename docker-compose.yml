@@ -224,6 +224,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
       MINIO_BUCKET_PHOTOS: ${MINIO_BUCKET_PHOTOS:-fight-photos}
+      TERRITORY_SERVICE_URL: http://territory-service:3002
     depends_on:
       postgres-vote:
         condition: service_healthy

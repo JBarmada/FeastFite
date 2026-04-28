@@ -62,10 +62,13 @@ export function ProfilePage() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [territories, setTerritories] = useState<Territory[]>([]);
+  const [inventory, setInventory] = useState<{ itemId: string; quantity: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [territoryNames, setTerritoryNames] = useState<Record<string, string>>({});
 
   const [submissions, setSubmissions] = useState<MySubmission[]>([]);
+  const [historyPage, setHistoryPage] = useState(0);
+  const HISTORY_PAGE_SIZE = 5;
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [loadingGallery, setLoadingGallery] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -82,12 +85,14 @@ export function ProfilePage() {
       profileApi.getUserStats(authToken).catch(() => null),
       profileApi.getLedger(authToken, 25).catch(() => []),
       territoryApi.getOwned(authToken).catch(() => []),
+      economyApi.getInventory(authToken).catch(() => ({ items: [] })),
     ])
-      .then(([s, l, t]) => {
+      .then(([s, l, t, inv]) => {
         setStats(s);
         const ledgerEntries = Array.isArray(l) ? l : [];
         setLedger(ledgerEntries);
         setTerritories(Array.isArray(t) ? t : []);
+        setInventory((inv as { items: { itemId: string; quantity: number }[] }).items ?? []);
         const tIds = [...new Set(ledgerEntries.map((e) => e.territoryId).filter(Boolean) as string[])];
         Promise.all(tIds.map((id) => territoryApi.getById(id).catch(() => null)))
           .then((terrs) => {
@@ -208,6 +213,33 @@ export function ProfilePage() {
                   {loading ? '…' : (stats?.balance ?? 0).toLocaleString()}
                 </div>
               </div>
+
+              {/* Inventory card */}
+              <div style={{ marginTop: 10, padding: '12px 14px', background: 'white', borderRadius: 12, border: `2px solid ${colors.border}` }}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary, letterSpacing: '0.06em', marginBottom: 10 }}>ITEMS</div>
+                {loading ? (
+                  <div style={{ color: colors.textSecondary, fontSize: 12, textAlign: 'center', padding: '4px 0' }}>…</div>
+                ) : inventory.filter((i) => i.quantity > 0).length === 0 ? (
+                  <div style={{ color: colors.textSecondary, fontSize: 12, textAlign: 'center', padding: '4px 0' }}>No items yet — visit the shop!</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {inventory.filter((i) => i.quantity > 0).map((item) => {
+                      const meta = INVENTORY_META[item.itemId];
+                      return (
+                        <div key={item.itemId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {meta && <ItemIcon kind={meta.kind} size={22} />}
+                            <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: colors.textPrimary }}>
+                              {meta?.name ?? item.itemId}
+                            </span>
+                          </div>
+                          <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: colors.primary }}>×{item.quantity}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </Panel>
 
             {/* ── Right column ── */}
@@ -325,23 +357,46 @@ export function ProfilePage() {
                 ) : ledger.length === 0 ? (
                   <div style={{ color: colors.textSecondary, textAlign: 'center', padding: '16px 0', fontSize: 13 }}>No activity yet — go claim a territory!</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {ledger.map((entry, i) => (
-                      <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i > 0 ? `1px solid ${colors.border}` : 'none' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, color: colors.textPrimary }}>
-                            {reasonLabel(entry.reason, entry.territoryId ? territoryNames[entry.territoryId] : undefined)}
+                  <>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {ledger.slice(historyPage * HISTORY_PAGE_SIZE, (historyPage + 1) * HISTORY_PAGE_SIZE).map((entry, i) => (
+                        <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i > 0 ? `1px solid ${colors.border}` : 'none' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, color: colors.textPrimary }}>
+                              {reasonLabel(entry.reason, entry.territoryId ? territoryNames[entry.territoryId] : undefined)}
+                            </div>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary }}>
+                              {new Date(entry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            </div>
                           </div>
-                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: colors.textSecondary }}>
-                            {new Date(entry.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: entry.delta > 0 ? colors.success : colors.error, flexShrink: 0 }}>
+                            {entry.delta > 0 ? '+' : ''}{entry.delta} pts
                           </div>
                         </div>
-                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, color: entry.delta > 0 ? colors.success : colors.error, flexShrink: 0 }}>
-                          {entry.delta > 0 ? '+' : ''}{entry.delta} pts
-                        </div>
+                      ))}
+                    </div>
+                    {ledger.length > HISTORY_PAGE_SIZE && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 12 }}>
+                        <button
+                          onClick={() => setHistoryPage(p => p - 1)}
+                          disabled={historyPage === 0}
+                          style={{ background: 'none', border: 'none', cursor: historyPage === 0 ? 'default' : 'pointer', fontSize: 18, color: historyPage === 0 ? colors.border : colors.textPrimary, padding: '2px 8px' }}
+                        >
+                          ‹
+                        </button>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: colors.textSecondary }}>
+                          {historyPage + 1} / {Math.ceil(ledger.length / HISTORY_PAGE_SIZE)}
+                        </span>
+                        <button
+                          onClick={() => setHistoryPage(p => p + 1)}
+                          disabled={(historyPage + 1) * HISTORY_PAGE_SIZE >= ledger.length}
+                          style={{ background: 'none', border: 'none', cursor: (historyPage + 1) * HISTORY_PAGE_SIZE >= ledger.length ? 'default' : 'pointer', fontSize: 18, color: (historyPage + 1) * HISTORY_PAGE_SIZE >= ledger.length ? colors.border : colors.textPrimary, padding: '2px 8px' }}
+                        >
+                          ›
+                        </button>
                       </div>
-                    ))}
-                  </div>
+                    )}
+                  </>
                 )}
               </Panel>
             </div>

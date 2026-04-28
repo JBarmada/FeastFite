@@ -128,6 +128,7 @@ export function VotingPage() {
         // Contested, no session yet — create one
         const { session } = await voteApi.createSession({
           territoryId: territory.id,
+          territoryName: territory.name,
           photoKey: upload.photoKey,
           challengerId: currentUserId,
           challengerName: currentUserName,
@@ -350,11 +351,16 @@ function avgRating(c: VoteCandidate): number {
 
 function timeLeft(endsAt: string): string {
   const ms = new Date(endsAt).getTime() - Date.now();
-  if (ms <= 0) return '0:00';
+  if (ms <= 0) return 'ended';
   const totalSec = Math.floor(ms / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
 }
 
 // ── Live fites landing page ───────────────────────────────────────────────────
@@ -365,33 +371,47 @@ interface LiveFitesLandingProps {
   authToken: string;
 }
 
-function LiveFitesLanding({ navigate }: LiveFitesLandingProps) {
+function LiveFitesLanding({ navigate, currentUserId }: LiveFitesLandingProps) {
   const [sessions, setSessions] = useState<VoteSession[]>([]);
-  const [territoryNames, setTerritoryNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    voteApi.getActiveSessions().then((s) => {
-      setSessions(s);
-      const ids = [...new Set(s.map((x) => x.territoryId))];
-      Promise.all(ids.map(async (id) => {
-        try {
-          const t = await territoryApi.getById(id);
-          return { id, name: t.name };
-        } catch {
-          return { id, name: `Block ${id.slice(0, 4).toUpperCase()}` };
-        }
-      })).then((entries) => {
-        const map: Record<string, string> = {};
-        entries.forEach(({ id, name }) => { map[id] = name; });
-        setTerritoryNames(map);
-      });
+    voteApi.getActiveSessions().then(async (loaded) => {
+      setSessions(loaded);
+      // For legacy sessions where territoryName wasn't stored, fetch from territory service
+      const needsLookup = loaded.filter((s) => !s.territoryName || s.territoryName === s.territoryId);
+      if (needsLookup.length === 0) return;
+      const resolved = await Promise.all(
+        needsLookup.map(async (s) => {
+          try {
+            const t = await territoryApi.getById(s.territoryId);
+            return { id: s.id, name: t.name };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      setSessions((prev) => prev.map((s) => {
+        const found = resolved.find((r) => r?.id === s.id);
+        return found ? { ...s, territoryName: found.name } : s;
+      }));
     });
   }, []);
 
-  function handleVote(sessionId: string, candidateId: string) {
-    return voteApi.submitVote(sessionId, { userId: 'guest', candidateId, rating: 5 }).then((updated) => {
-      setSessions((prev) => prev.map((s) => s.id === sessionId ? updated : s));
-    });
+  async function handleVote(sessionId: string, candidateId: string): Promise<VoteSession | null> {
+    try {
+      const updated = await voteApi.submitVote(sessionId, { userId: currentUserId, candidateId, rating: 5 });
+      setSessions((prev) => prev.map((s) => {
+        if (s.id !== sessionId) return s;
+        // Preserve locally-resolved territory name if backend didn't return one
+        const name = (updated.territoryName && updated.territoryName !== updated.territoryId)
+          ? updated.territoryName
+          : s.territoryName;
+        return { ...updated, territoryName: name };
+      }));
+      return updated;
+    } catch {
+      return null;
+    }
   }
 
   return (
@@ -429,9 +449,9 @@ function LiveFitesLanding({ navigate }: LiveFitesLandingProps) {
               <FeaturedFite
                 key={s.id}
                 session={s}
-                name={territoryNames[s.territoryId] ?? `Block ${s.territoryId.slice(0, 4).toUpperCase()}`}
+                name={s.territoryName || `Block ${s.territoryId.slice(0, 4).toUpperCase()}`}
                 blockLabel={`BLOCK ${String(i + 1).padStart(2, '0')}`}
-                currentUserId=""
+                currentUserId={currentUserId}
                 onVote={handleVote}
               />
             ))
@@ -481,7 +501,7 @@ function LiveFitesLanding({ navigate }: LiveFitesLandingProps) {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 800, fontSize: '0.8rem', color: '#1A0A2E', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {territoryNames[s.territoryId] ?? `Block ${s.territoryId.slice(0, 4).toUpperCase()}`}
+                        {s.territoryName || `Block ${s.territoryId.slice(0, 4).toUpperCase()}`}
                       </div>
                       <div style={{ fontSize: '0.66rem', color: '#999' }}>
                         {totalVotes} votes · {s.candidates.length} grubs · {timeLeft(s.endsAt)}
@@ -505,12 +525,15 @@ interface FeaturedFiteProps {
   name: string;
   blockLabel: string;
   currentUserId: string;
-  onVote: (sessionId: string, candidateId: string) => Promise<void>;
+  onVote: (sessionId: string, candidateId: string) => Promise<VoteSession | null>;
 }
 
-function FeaturedFite({ session, name, blockLabel, onVote }: FeaturedFiteProps) {
+function FeaturedFite({ session, name, blockLabel, currentUserId, onVote }: FeaturedFiteProps) {
   const [voting, setVoting] = useState<string | null>(null);
+  const [localSession, setLocalSession] = useState(session);
   const [tick, setTick] = useState(0);
+
+  useEffect(() => { setLocalSession(session); }, [session]);
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
@@ -519,18 +542,24 @@ function FeaturedFite({ session, name, blockLabel, onVote }: FeaturedFiteProps) 
 
   void tick;
 
-  const maxVotes = Math.max(...session.candidates.map((c) => c.votes), 1);
-  const leaderId = session.candidates.reduce(
+  const hasVoted = currentUserId
+    ? (localSession.votesByUser[currentUserId]?.length ?? 0) > 0
+    : false;
+
+  const maxVotes = Math.max(...localSession.candidates.map((c) => c.votes), 1);
+  const leaderId = localSession.candidates.reduce(
     (best, c) => (c.votes > (best?.votes ?? -1) ? c : best),
-    session.candidates[0],
+    localSession.candidates[0],
   )?.id;
 
   async function handleVote(candidateId: string) {
+    if (hasVoted || voting !== null) return;
     setVoting(candidateId);
-    try { await onVote(session.id, candidateId); } finally { setVoting(null); }
+    try {
+      const updated = await onVote(session.id, candidateId);
+      if (updated) setLocalSession(updated);
+    } finally { setVoting(null); }
   }
-
-  const totalWatching = session.candidates.reduce((s, c) => s + c.votes, 0);
 
   return (
     <div style={{
@@ -554,24 +583,37 @@ function FeaturedFite({ session, name, blockLabel, onVote }: FeaturedFiteProps) 
           <span style={{ fontWeight: 900, fontSize: '1.15rem', color: '#1A0A2E' }}>{name}</span>
         </div>
         <span style={{ fontSize: '0.78rem', color: '#999', fontWeight: 700, letterSpacing: '0.04em' }}>
-          {blockLabel} · CLOSES {timeLeft(session.endsAt)}
+          {blockLabel} · CLOSES {timeLeft(localSession.endsAt)}
         </span>
       </div>
 
+      {/* Voted banner */}
+      {hasVoted && (
+        <div style={{
+          background: '#F0FFF4', border: '1.5px solid #2EB86B', borderRadius: '10px',
+          padding: '8px 14px', marginBottom: '12px', fontSize: '0.8rem',
+          color: '#1A6641', fontWeight: 700, textAlign: 'center',
+        }}>
+          ✓ You voted in this fite!
+        </div>
+      )}
+
       {/* Candidates */}
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(session.candidates.length, 3)}, 1fr)`, gap: '8px', marginBottom: '12px' }}>
-        {session.candidates.slice(0, 3).map((c, i) => {
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(localSession.candidates.length, 3)}, 1fr)`, gap: '8px', marginBottom: '12px' }}>
+        {localSession.candidates.slice(0, 3).map((c, i) => {
           const color = CANDIDATE_COLORS[i % CANDIDATE_COLORS.length]!;
           const isLeading = c.id === leaderId && c.votes > 0;
+          const isVotedFor = currentUserId ? (localSession.votesByUser[currentUserId] ?? []).includes(c.id) : false;
           const rating = avgRating(c);
           const barPct = maxVotes > 0 ? (c.votes / maxVotes) * 100 : 0;
+          const buttonDisabled = hasVoted || voting !== null;
 
           return (
             <div key={c.id} style={{
-              border: `2.5px solid ${color.border}`,
+              border: `2.5px solid ${isVotedFor ? '#2EB86B' : color.border}`,
               borderRadius: '14px',
               overflow: 'hidden',
-              background: '#FAFAFA',
+              background: isVotedFor ? '#F0FFF4' : '#FAFAFA',
               position: 'relative',
             }}>
               {isLeading && (
@@ -620,22 +662,25 @@ function FeaturedFite({ session, name, blockLabel, onVote }: FeaturedFiteProps) 
 
                 {/* Progress bar */}
                 <div style={{ height: '3px', background: '#EEE', borderRadius: '999px', marginBottom: '8px' }}>
-                  <div style={{ height: '100%', width: `${barPct}%`, background: color.bar, borderRadius: '999px', transition: 'width 0.3s' }} />
+                  <div style={{ height: '100%', width: `${barPct}%`, background: isVotedFor ? '#2EB86B' : color.bar, borderRadius: '999px', transition: 'width 0.3s' }} />
                 </div>
 
                 {/* Vote button */}
                 <button
                   onClick={() => handleVote(c.id)}
-                  disabled={voting !== null}
+                  disabled={buttonDisabled}
                   style={{
-                    width: '100%', background: color.button, color: '#fff',
+                    width: '100%',
+                    background: isVotedFor ? '#2EB86B' : buttonDisabled ? '#CCC' : color.button,
+                    color: '#fff',
                     border: 'none', borderRadius: '999px', padding: '6px 0',
-                    fontWeight: 800, fontSize: '0.75rem', cursor: voting !== null ? 'not-allowed' : 'pointer',
+                    fontWeight: 800, fontSize: '0.75rem',
+                    cursor: buttonDisabled ? 'not-allowed' : 'pointer',
                     opacity: voting === c.id ? 0.7 : 1,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
                   }}
                 >
-                  {voting === c.id ? '…' : '♥ Vote'}
+                  {voting === c.id ? '…' : isVotedFor ? '✓ Voted' : hasVoted ? 'Voted' : '♥ Vote'}
                 </button>
               </div>
             </div>
@@ -646,10 +691,10 @@ function FeaturedFite({ session, name, blockLabel, onVote }: FeaturedFiteProps) 
       {/* Watching footer */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px solid #F0E8FF', paddingTop: '10px' }}>
         <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#999', letterSpacing: '0.06em' }}>
-          {totalWatching} GRUBS WATCHING
+          {localSession.candidates.reduce((s, c) => s + c.votes, 0)} GRUBS WATCHING
         </span>
         <div style={{ display: 'flex', gap: '-6px' }}>
-          {session.candidates.slice(0, 5).map((c, i) => (
+          {localSession.candidates.slice(0, 5).map((c, i) => (
             <div key={c.id} style={{
               width: '24px', height: '24px', borderRadius: '50%',
               background: CANDIDATE_COLORS[i % CANDIDATE_COLORS.length]?.button ?? '#ccc',
